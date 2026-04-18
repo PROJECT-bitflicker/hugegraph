@@ -1,87 +1,44 @@
 # Key File and Directory Locations
 
-## Project Root
-The project root contains the multi-module Maven structure.
+## Build & Config
+- `pom.xml` — Root multi-module POM
+- `.editorconfig` — Code style rules
+- `style/checkstyle.xml` — Checkstyle enforcement (hugegraph-style.xml was removed)
+- `.licenserc.yaml` — License checker config
 
-## Configuration Files
+## Server (hugegraph-server)
+- Core engine: `hugegraph-core/src/main/java/org/apache/hugegraph/` → `backend/`, `schema/`, `traversal/`, `task/`
+- GraphSpace: `hugegraph-core/.../space/` → `GraphSpace.java`, `SchemaTemplate.java`, `Service.java`, `register/`
+- REST APIs: `hugegraph-api/src/main/java/org/apache/hugegraph/api/` → `graph/`, `schema/`, `gremlin/`, `cypher/`, `auth/`, `space/` (GraphSpaceAPI), `metrics/`, `arthas/`
+- OpenCypher: `hugegraph-api/.../opencypher/`
+- Backend interface: `hugegraph-core/.../backend/store/BackendStore.java`
+- Distribution: `hugegraph-dist/src/assembly/static/` → `bin/`, `conf/`, `lib/`, `logs/`
+- Tests: `hugegraph-test/src/main/java/.../` → `unit/`, `core/`, `api/`, `tinkerpop/`
 
-### Build Configuration
-- `pom.xml` - Root Maven POM (multi-module)
-- `.editorconfig` - Code style rules
-- `style/checkstyle.xml` - Checkstyle rules
-- `.licenserc.yaml` - License checker config
+## Docker
+- `docker/docker-compose.yml` — Single-node (bridge network, pd+store+server)
+- `docker/docker-compose-3pd-3store-3server.yml` — 3-node cluster
+- `docker/docker-compose.dev.yml` — Dev mode
 
-### Documentation
-- `README.md` - Project overview
-- `BUILDING.md` - Build instructions
-- `CONTRIBUTING.md` - Contribution guide
-- `AGENTS.md` - AI agent development guide
-- `LICENSE` - Apache License 2.0
-- `NOTICE` - Copyright notices
+## PD Module
+- Proto: `hugegraph-pd/hg-pd-grpc/src/main/proto/`
+- Dist: `hugegraph-pd/hg-pd-dist/src/assembly/static/`
 
-## Server Module (hugegraph-server)
+## Store Module
+- Proto: `hugegraph-store/hg-store-grpc/src/main/proto/`
+- Dist: `hugegraph-store/hg-store-dist/src/assembly/static/`
 
-### Core Implementation
-- `hugegraph-core/src/main/java/org/apache/hugegraph/` - Core engine
-  - `backend/` - Backend interface
-  - `schema/` - Schema management
-  - `traversal/` - Query processing
-  - `task/` - Background tasks
+## CI Workflows (.github/workflows/)
+- `server-ci.yml` — Server tests (matrix: memory/rocksdb/hbase × Java 11)
+- `pd-store-ci.yml` — PD & Store tests
+- `commons-ci.yml` — Commons tests
+- `cluster-test-ci.yml` — Cluster integration
+- `licence-checker.yml` — License headers
+- `rerun-ci.yml` — Auto-rerun for flaky workflows
+- `auto-pr-review.yml` — Auto-comment on new PRs
+- `check-dependencies.yml` — Dependency checks
+- `codeql-analysis.yml` — CodeQL security scanning
+- `stale.yml` — Stale issue/PR cleanup
 
-### API Layer
-- `hugegraph-api/src/main/java/org/apache/hugegraph/api/` - REST APIs
-  - `graph/` - GraphAPI
-  - `schema/` - SchemaAPI
-  - `gremlin/` - GremlinAPI
-  - `cypher/` - CypherAPI
-  - `auth/` - AuthAPI
-  - `opencypher/` - OpenCypher implementation
-
-### Backend Implementations
-- `hugegraph-rocksdb/` - RocksDB backend (default)
-- `hugegraph-hstore/` - HStore distributed backend
-- `hugegraph-hbase/` - HBase backend
-- `hugegraph-mysql/` - MySQL backend
-- `hugegraph-postgresql/` - PostgreSQL backend
-- `hugegraph-cassandra/` - Cassandra backend
-- `hugegraph-scylladb/` - ScyllaDB backend
-- `hugegraph-palo/` - Palo backend
-
-### Distribution and Scripts
-- `hugegraph-dist/src/assembly/static/` - Distribution files
-  - `bin/` - Shell scripts (init-store.sh, start-hugegraph.sh, stop-hugegraph.sh, etc.)
-  - `conf/` - Configuration files (hugegraph.properties, rest-server.properties, gremlin-server.yaml, log4j2.xml)
-  - `lib/` - JAR dependencies
-  - `logs/` - Log files
-
-### Testing
-- `hugegraph-test/src/main/java/org/apache/hugegraph/` - Test suites
-  - `unit/` - Unit tests
-  - `core/` - Core functionality tests
-  - `api/` - API integration tests
-  - `tinkerpop/` - TinkerPop compliance tests
-
-## PD Module (hugegraph-pd)
-- `hg-pd-core/` - Core PD logic
-- `hg-pd-service/` - Service implementation
-- `hg-pd-client/` - Client library
-- `hg-pd-grpc/src/main/proto/` - Protocol definitions
-- `hg-pd-dist/src/assembly/static/` - Distribution files
-
-## Store Module (hugegraph-store)
-- `hg-store-core/` - Core storage logic
-- `hg-store-node/` - Storage node
-- `hg-store-client/` - Client library
-- `hg-store-grpc/src/main/proto/` - Protocol definitions
-- `hg-store-dist/src/assembly/static/` - Distribution files
-
-## Commons Module (hugegraph-commons)
-- Shared utilities, RPC framework
-
-## Struct Module (hugegraph-struct)
-- Data structure definitions (must be built before PD and Store)
-
-## Distribution Module (install-dist)
-- `release-docs/` - LICENSE, NOTICE, licenses/
-- `scripts/dependency/` - Dependency management scripts
-- `target/` - Build output (hugegraph-<version>.tar.gz)
+## Docs
+- `README.md`, `BUILDING.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`
