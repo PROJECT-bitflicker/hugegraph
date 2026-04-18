@@ -7,10 +7,7 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/license-Apache%202-0E78BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
-[![HugeGraph-Commons CI](https://github.com/apache/hugegraph/actions/workflows/commons-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/commons-ci.yml)
-[![Cluster Test CI](https://github.com/apache/hugegraph/actions/workflows/cluster-test-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/cluster-test-ci.yml)
-[![HugeGraph-PD & Store & Hstore CI](https://github.com/apache/hugegraph/actions/workflows/pd-store-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/pd-store-ci.yml)
-[![Rerun CI](https://github.com/apache/hugegraph/actions/workflows/rerun-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/rerun-ci.yml)
+[![HugeGraph-PD & Store CI](https://github.com/apache/hugegraph/actions/workflows/pd-store-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/pd-store-ci.yml)
 [![HugeGraph-Server CI](https://github.com/apache/hugegraph/actions/workflows/server-ci.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/server-ci.yml)
 [![License checker](https://github.com/apache/hugegraph/actions/workflows/licence-checker.yml/badge.svg)](https://github.com/apache/hugegraph/actions/workflows/licence-checker.yml)
 [![GitHub Releases Downloads](https://img.shields.io/github/downloads/apache/hugegraph/total.svg)](https://github.com/apache/hugegraph/releases)
