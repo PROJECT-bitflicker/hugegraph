@@ -66,6 +66,7 @@ public class IndexAPI extends API {
         BriefStatistics statistics = new BriefStatistics();
         statistics.leader = RaftEngine.getInstance().getLeaderGrpcAddress();
         statistics.state = pdService.getStoreNodeService().getClusterStats().getState().toString();
+        statistics.memberSize = RaftEngine.getInstance().getMembers().size();
         statistics.storeSize = pdService.getStoreNodeService().getActiveStores().size();
         statistics.graphSize = pdService.getPartitionService().getGraphs().size();
         statistics.partitionSize = pdService.getStoreNodeService().getShardGroups().size();
