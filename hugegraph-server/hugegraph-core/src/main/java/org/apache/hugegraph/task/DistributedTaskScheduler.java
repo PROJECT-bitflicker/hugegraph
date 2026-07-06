@@ -186,8 +186,8 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
 
         while (!this.closed.get() && cancellings.hasNext()) {
             Id cancellingId = cancellings.next().id();
-            if (runningTasks.containsKey(cancellingId)) {
-                HugeTask<?> cancelling = runningTasks.get(cancellingId);
+            HugeTask<?> cancelling = runningTasks.get(cancellingId);
+            if (cancelling != null) {
                 initTaskParams(cancelling);
                 LOG.info("Try to cancel task({})@({}/{})",
                          cancelling.id(), this.graphSpace, this.graphName);
@@ -389,15 +389,12 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
         }
 
         // Write DELETING status before attempting physical delete so that a
-        // failed result deletion is recoverable via cronSchedule(). Write via
-        // direct vertex construction — save() has a DELETING guard for the
-        // resurrect-race callback path.
-        HugeTask<?> toDelete = this.taskWithoutResult(id);
-        if (toDelete != null && toDelete.status() != TaskStatus.DELETING) {
-            initTaskParams(toDelete);
-            toDelete.overwriteStatus(TaskStatus.DELETING);
+        // failed result deletion is recoverable via cronSchedule().
+        if (task != null && task.status() != TaskStatus.DELETING) {
+            initTaskParams(task);
+            task.overwriteStatus(TaskStatus.DELETING);
             this.call(() -> {
-                HugeVertex vertex = this.tx().constructTaskVertex(toDelete);
+                HugeVertex vertex = this.tx().constructTaskVertex(task);
                 this.tx().deleteIndex(vertex);
                 return this.tx().addVertex(vertex);
             });
@@ -458,9 +455,8 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             });
         }
 
-        //todo: serverInfoManager section should be removed in the future.
+        // TODO: serverInfoManager section should be removed in the future.
         return this.serverManager().close();
-        //return true;
     }
 
     @Override

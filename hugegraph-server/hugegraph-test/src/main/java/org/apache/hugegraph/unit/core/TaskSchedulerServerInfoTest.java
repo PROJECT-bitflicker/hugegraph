@@ -59,11 +59,11 @@ public class TaskSchedulerServerInfoTest {
         ExecutorService ephemeralTaskExecutor = Executors.newSingleThreadExecutor();
         ExecutorService serverInfoDbExecutor = Executors.newSingleThreadExecutor();
 
-        DistributedTaskScheduler scheduler = new DistributedTaskScheduler(
-                params, schedulerExecutor, taskDbExecutor, schemaTaskExecutor,
-                olapTaskExecutor, gremlinTaskExecutor, ephemeralTaskExecutor,
-                serverInfoDbExecutor);
         try {
+            DistributedTaskScheduler scheduler = new DistributedTaskScheduler(
+                    params, schedulerExecutor, taskDbExecutor, schemaTaskExecutor,
+                    olapTaskExecutor, gremlinTaskExecutor, ephemeralTaskExecutor,
+                    serverInfoDbExecutor);
             scheduler.checkRequirement("schedule");
         } finally {
             schedulerExecutor.shutdownNow();
