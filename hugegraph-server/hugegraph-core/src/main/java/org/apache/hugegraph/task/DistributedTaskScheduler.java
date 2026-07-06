@@ -191,9 +191,15 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
                 initTaskParams(cancelling);
                 LOG.info("Try to cancel task({})@({}/{})",
                          cancelling.id(), this.graphSpace, this.graphName);
-                cancelling.cancel(true);
-
+                // Remove BEFORE cancel() so a concurrent cronSchedule()
+                // on another node won't see this task and retry it.
                 runningTasks.remove(cancellingId);
+                if (!cancelling.cancel(true)) {
+                    // Task already completed normally; force CANCELLED so
+                    // it doesn't stay stuck in CANCELLING forever.
+                    updateStatusWithLock(cancellingId, TaskStatus.CANCELLING,
+                                         TaskStatus.CANCELLED);
+                }
             } else {
                 // Local no execution task, but the current task has no nodes executing.
                 if (!isLockedTask(cancellingId.toString())) {
@@ -325,11 +331,26 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
         // Task not running locally, update status to CANCELLING
         // for cronSchedule() or other nodes to handle
         TaskStatus currentStatus = task.status();
-        if (!this.updateStatus(task.id(), currentStatus, TaskStatus.CANCELLING)) {
-            LOG.info("Failed to cancel task '{}', status may have changed from {}",
-                     task.id(), currentStatus);
-        } else {
+        if (this.updateStatus(task.id(), currentStatus, TaskStatus.CANCELLING)) {
             task.overwriteStatus(TaskStatus.CANCELLING);
+        } else {
+            // Status race: re-read from DB and retry with fresh status
+            HugeTask<Object> reloaded = this.taskWithoutResult(task.id());
+            TaskStatus stored = reloaded.status();
+            if (stored != TaskStatus.CANCELLING &&
+                !TaskStatus.COMPLETED_STATUSES.contains(stored)) {
+                if (this.updateStatus(task.id(), stored, TaskStatus.CANCELLING)) {
+                    task.overwriteStatus(TaskStatus.CANCELLING);
+                    LOG.info("Retry cancel task '{}' succeeded (stored was {})",
+                             task.id(), stored);
+                } else {
+                    LOG.warn("Failed to cancel task '{}', re-read status {} changed again",
+                             task.id(), stored);
+                }
+            } else {
+                LOG.info("Task '{}' already {}/terminal, skip cancel",
+                         task.id(), stored);
+            }
         }
     }
 

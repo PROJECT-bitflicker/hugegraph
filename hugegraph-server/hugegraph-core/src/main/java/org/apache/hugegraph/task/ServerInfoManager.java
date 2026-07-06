@@ -56,18 +56,9 @@ public class ServerInfoManager {
     }
 
     public synchronized boolean close() {
+        // ServerInfo persistence is soft-deprecated; init() and heartbeat()
+        // are no-ops, so there's nothing to clean up in close().
         this.closed = true;
-        if (!this.dbExecutor.isShutdown()) {
-            this.call(() -> {
-                try {
-                    this.tx().close();
-                } catch (ConnectionException ignored) {
-                    // ConnectionException means no connection established
-                }
-                this.graph.closeTx();
-                return null;
-            });
-        }
         return true;
     }
 

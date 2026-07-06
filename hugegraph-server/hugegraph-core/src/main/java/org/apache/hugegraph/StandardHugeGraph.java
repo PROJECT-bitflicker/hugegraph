@@ -225,6 +225,16 @@ public class StandardHugeGraph implements HugeGraph {
 
         this.taskManager = TaskManager.instance();
         this.name = config.get(CoreOptions.STORE);
+
+        // Fail fast if user still has the removed config key in their properties file
+        if (config.containsKey("task.scheduler_type")) {
+            throw new HugeException(
+                "Config key 'task.scheduler_type' has been removed. " +
+                "The scheduler is now auto-selected based on backend type " +
+                "(hstore → distributed, others → local). " +
+                "Please remove this key from your hugegraph.properties.");
+        }
+
         this.started = false;
         this.closed = false;
         this.mode = GraphMode.NONE;

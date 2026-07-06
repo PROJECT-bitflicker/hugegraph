@@ -1647,8 +1647,12 @@ public final class GraphManager {
     private void initNodeRole() {
         boolean enableRoleElection = config.get(
                 ServerOptions.ENABLE_SERVER_ROLE_ELECTION);
-        E.checkArgument(!enableRoleElection,
-                        "The server.role_election is no longer supported");
+        if (enableRoleElection) {
+            LOG.warn("The server.role_election option is deprecated and no " +
+                     "longer supported (removed with server_info persistence). " +
+                     "Nodes operate as WORKER with local scheduling. Set " +
+                     "enable_server_role_election=false to suppress this warning.");
+        }
 
         String role = config.get(ServerOptions.SERVER_ROLE);
 
@@ -1664,7 +1668,7 @@ public final class GraphManager {
         }
         if (!this.globalNodeRoleInfo.nodeRole().computer() && this.supportRoleElection() &&
             config.get(ServerOptions.ENABLE_SERVER_ROLE_ELECTION)) {
-            this.initRoleStateMachine();
+            LOG.info("Skip role state machine init (deprecated with server_info)");
         }
     }
 

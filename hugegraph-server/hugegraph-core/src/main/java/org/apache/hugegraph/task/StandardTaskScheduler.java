@@ -146,7 +146,12 @@ public class StandardTaskScheduler implements TaskScheduler {
         List<HugeTask<V>> taskList = new ArrayList<>();
         // Restore 'RESTORING', 'RUNNING' and 'QUEUED' tasks in order.
         // Single-node mode: restore all pending tasks without server filtering
-        for (TaskStatus status : TaskStatus.PENDING_STATUSES) {
+        // Also include SCHEDULING/SCHEDULED from pre-upgrade to avoid orphans
+        List<TaskStatus> restoreStatuses = new ArrayList<>(
+                TaskStatus.PENDING_STATUSES);
+        restoreStatuses.add(TaskStatus.SCHEDULING);
+        restoreStatuses.add(TaskStatus.SCHEDULED);
+        for (TaskStatus status : restoreStatuses) {
             String page = this.supportsPaging() ? PageInfo.PAGE_NONE : null;
             do {
                 Iterator<HugeTask<V>> iter;

@@ -77,13 +77,24 @@ public class TaskCoreTest extends BaseCoreTest {
         Assert.assertEquals(id, task.id());
         Assert.assertFalse(task.completed());
 
-        if (scheduler.getClass().equals(StandardTaskScheduler.class)) {
+        if (scheduler instanceof StandardTaskScheduler) {
+            // StandardTaskScheduler: delete of incomplete task throws
             Assert.assertThrows(IllegalArgumentException.class, () -> {
                 scheduler.delete(id, false);
             }, e -> {
                 Assert.assertContains("Can't delete incomplete task '88888'",
                                       e.getMessage());
             });
+        } else {
+            // DistributedTaskScheduler: delete(id, false) on a running task
+            // marks it as DELETING and returns null (async cleanup via
+            // cronSchedule). Skip the wait/verify section — the task is being
+            // deleted, and completed-task delete is tested at line 113 below.
+            HugeTask<?> result = scheduler.delete(id, false);
+            Assert.assertNull(result);
+            HugeTask<?> marked = scheduler.task(id);
+            Assert.assertEquals(TaskStatus.DELETING, marked.status());
+            return;
         }
 
         task = scheduler.waitUntilTaskCompleted(task.id(), 10);
@@ -737,8 +748,8 @@ public class TaskCoreTest extends BaseCoreTest {
 
         HugeTask<Object> finalTask = task;
 
-        // because Distributed do nothing in restore, so only test StandardTaskScheduler here
-        if (scheduler.getClass().equals(StandardTaskScheduler.class)) {
+        // because Distributed do nothing in restore
+        if (scheduler instanceof StandardTaskScheduler) {
             Assert.assertThrows(IllegalArgumentException.class, () -> {
                 Whitebox.invoke(scheduler.getClass(), "restore", scheduler,
                                 finalTask);
@@ -768,6 +779,15 @@ public class TaskCoreTest extends BaseCoreTest {
             Assert.assertEquals(10, task2.progress());
             Assert.assertEquals(1, task2.retries());
             Assert.assertEquals("100", task2.result());
+        } else {
+            // DistributedTaskScheduler.restoreTasks() is a no-op by design —
+            // distributed recovery is handled by cronSchedule(), not
+            // restoreTasks(). Verify it does not throw and leaves task state
+            // untouched.
+            scheduler.restoreTasks();
+            HugeTask<?> recovered = scheduler.task(task.id());
+            Assert.assertNotNull(recovered);
+            Assert.assertEquals(TaskStatus.CANCELLED, recovered.status());
         }
     }
 

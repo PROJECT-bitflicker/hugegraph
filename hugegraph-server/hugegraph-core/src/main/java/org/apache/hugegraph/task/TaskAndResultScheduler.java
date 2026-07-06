@@ -76,6 +76,12 @@ public abstract class TaskAndResultScheduler implements TaskScheduler {
     @Override
     public <V> void save(HugeTask<V> task) {
         E.checkArgumentNotNull(task, "Task can't be null");
+        // Skip save for tasks that are being deleted — prevents the
+        // FutureTask.done() callback path from writing a resurrected row
+        // after cronSchedule()'s deleteFromDB() has already removed it.
+        if (task.status() == TaskStatus.DELETING) {
+            return;
+        }
         String rawResult = task.result();
 
         // Save task without result;
