@@ -388,7 +388,20 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             return null;
         }
 
-        // Delete from DB directly for completed/DELETING tasks or force=true
+        // Write DELETING status before attempting physical delete so that a
+        // failed result deletion is recoverable via cronSchedule(). Write via
+        // direct vertex construction — save() has a DELETING guard for the
+        // resurrect-race callback path.
+        HugeTask<?> toDelete = this.taskWithoutResult(id);
+        if (toDelete != null && toDelete.status() != TaskStatus.DELETING) {
+            initTaskParams(toDelete);
+            toDelete.overwriteStatus(TaskStatus.DELETING);
+            this.call(() -> {
+                HugeVertex vertex = this.tx().constructTaskVertex(toDelete);
+                this.tx().deleteIndex(vertex);
+                return this.tx().addVertex(vertex);
+            });
+        }
         return this.deleteFromDB(id);
     }
 
