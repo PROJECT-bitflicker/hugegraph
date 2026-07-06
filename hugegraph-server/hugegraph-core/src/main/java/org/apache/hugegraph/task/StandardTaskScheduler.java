@@ -262,6 +262,9 @@ public class StandardTaskScheduler implements TaskScheduler {
         HugeTask<?> memTask = this.tasks.get(task.id());
         if (memTask != null) {
             boolean cancelled = memTask.cancel(true);
+            if (cancelled) {
+                task.overwriteStatus(TaskStatus.CANCELLED);
+            }
             LOG.info("Task '{}' cancel result: {}", task.id(), cancelled);
             return;
         }

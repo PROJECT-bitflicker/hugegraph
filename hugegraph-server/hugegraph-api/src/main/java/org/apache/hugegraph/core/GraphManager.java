@@ -1655,6 +1655,8 @@ public final class GraphManager {
         }
 
         String role = config.get(ServerOptions.SERVER_ROLE);
+        E.checkArgument(StringUtils.isNotEmpty(role),
+                        "The server role can't be null or empty");
 
         NodeRole nodeRole = NodeRole.valueOf(role.toUpperCase());
         this.globalNodeRoleInfo.initNodeRole(nodeRole);
