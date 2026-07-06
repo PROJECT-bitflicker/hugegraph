@@ -178,7 +178,7 @@ public class TaskCoreTest extends BaseCoreTest {
         Assert.assertEquals("metadata-task", taskWithoutResult.name());
         Assert.assertNull(taskWithoutResult.result());
 
-        Iterator<HugeTask<Object>> iter = scheduler.tasks(ImmutableList.of(id));
+        Iterator<HugeTask<Object>> iter = scheduler.tasks(ImmutableList.of(id), true);
         Assert.assertTrue(iter.hasNext());
         taskWithResult = iter.next();
         Assert.assertEquals("metadata-task", taskWithResult.name());
