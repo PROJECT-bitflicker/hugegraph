@@ -18,6 +18,7 @@
 package org.apache.hugegraph.task;
 
 import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -66,6 +67,7 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
     private final AtomicBoolean closed = new AtomicBoolean(true);
 
     private final ConcurrentHashMap<Id, HugeTask<?>> runningTasks = new ConcurrentHashMap<>();
+    private final Set<Id> deletingTasks = ConcurrentHashMap.newKeySet();
 
     public DistributedTaskScheduler(HugeGraphParams graph,
                                     ScheduledThreadPoolExecutor schedulerExecutor,
@@ -191,9 +193,6 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
                 initTaskParams(cancelling);
                 LOG.info("Try to cancel task({})@({}/{})",
                          cancelling.id(), this.graphSpace, this.graphName);
-                // Remove BEFORE cancel() so a concurrent cronSchedule()
-                // on another node won't see this task and retry it.
-                runningTasks.remove(cancellingId);
                 if (!cancelling.cancel(true)) {
                     // Task already completed normally; force CANCELLED so
                     // it doesn't stay stuck in CANCELLING forever.
@@ -215,15 +214,10 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
 
         while (!this.closed.get() && deletings.hasNext()) {
             Id deletingId = deletings.next().id();
-            if (runningTasks.containsKey(deletingId)) {
-                HugeTask<?> deleting = runningTasks.get(deletingId);
-                initTaskParams(deleting);
+            HugeTask<?> deleting = runningTasks.get(deletingId);
+            if (deleting != null) {
+                this.markTaskDeleting(deleting);
                 deleting.cancel(true);
-
-                // Delete storage information
-                deleteFromDB(deletingId);
-
-                runningTasks.remove(deletingId);
             } else {
                 // Local has no task execution, but the current task has no nodes executing anymore.
                 if (!isLockedTask(deletingId.toString())) {
@@ -323,6 +317,7 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             boolean cancelled = runningTask.cancel(true);
             if (cancelled) {
                 task.overwriteStatus(TaskStatus.CANCELLED);
+                this.save(runningTask);
             }
             LOG.info("Cancel local running task '{}' result: {}", task.id(), cancelled);
             return;
@@ -361,45 +356,177 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
 
     protected <V> HugeTask<V> deleteFromDB(Id id) {
         // Delete Task from DB, without checking task status
-        return this.call(() -> {
-            Iterator<Vertex> vertices = this.tx().queryTaskInfos(id);
-            HugeVertex vertex = (HugeVertex) QueryResults.one(vertices);
-            if (vertex == null) {
+        try {
+            return this.call(() -> {
+                Iterator<Vertex> vertices = this.tx().queryTaskInfos(id);
+                HugeVertex vertex = (HugeVertex) QueryResults.one(vertices);
+                if (vertex == null) {
+                    this.deleteTaskResultFromTx(id);
+                    return null;
+                }
+                HugeTask<V> result = HugeTask.fromVertex(vertex, false);
+                // Keep the task vertex as a retryable tombstone until its result
+                // vertex is removed; cronSchedule() can rediscover DELETING tasks.
                 this.deleteTaskResultFromTx(id);
+                this.tx().removeTaskVertex(vertex);
+                return result;
+            });
+        } finally {
+            if (!this.runningTasks.containsKey(id)) {
+                this.deletingTasks.remove(id);
+            }
+        }
+    }
+
+    @Override
+    public <V> void save(HugeTask<V> task) {
+        E.checkArgumentNotNull(task, "Task can't be null");
+        if (this.deletingTasks.contains(task.id())) {
+            LOG.info("Skip saving task({})@({}/{}) because it is deleting",
+                     task.id(), this.graphSpace, this.graphName);
+            return;
+        }
+
+        String rawResult = task.result();
+        Boolean saved = this.call(() -> {
+            if (task.status() != TaskStatus.DELETING &&
+                this.storedTaskDeleting(task.id())) {
+                LOG.info("Skip saving task({})@({}/{}) because stored status " +
+                         "is DELETING", task.id(), this.graphSpace,
+                         this.graphName);
+                return false;
+            }
+            HugeVertex vertex = this.tx().constructTaskVertex(task);
+            this.tx().deleteIndex(vertex);
+            this.tx().addVertex(vertex);
+            return true;
+        });
+
+        if (!saved || rawResult == null) {
+            return;
+        }
+
+        this.call(() -> {
+            if (this.deletingTasks.contains(task.id()) ||
+                !this.storedTaskAllowsResultSave(task.id())) {
+                LOG.info("Skip saving task({}) result@({}/{}) because it is " +
+                         "deleting or missing", task.id(), this.graphSpace,
+                         this.graphName);
                 return null;
             }
-            HugeTask<V> result = HugeTask.fromVertex(vertex, false);
-            // Keep the task vertex as a retryable tombstone until its result
-            // vertex is removed; cronSchedule() can rediscover DELETING tasks.
-            this.deleteTaskResultFromTx(id);
-            this.tx().removeTaskVertex(vertex);
-            return result;
+            HugeTaskResult result =
+                    new HugeTaskResult(HugeTaskResult.genId(task.id()));
+            result.result(rawResult);
+
+            HugeVertex vertex = this.tx().constructTaskResultVertex(result);
+            return this.tx().addVertex(vertex);
+        });
+    }
+
+    private void markTaskDeleting(HugeTask<?> task) {
+        this.deletingTasks.add(task.id());
+        initTaskParams(task);
+        HugeTask<?> deleting;
+        synchronized (task) {
+            task.overwriteStatus(TaskStatus.DELETING);
+            deleting = task.copyWithoutResult();
+        }
+        this.saveTaskWithoutResult(deleting);
+    }
+
+    private boolean storedTaskDeleting(Id id) {
+        Iterator<Vertex> vertices = this.tx().queryTaskInfos(id);
+        Vertex vertex = QueryResults.one(vertices);
+        if (vertex == null) {
+            return false;
+        }
+        HugeTask<?> task = HugeTask.fromVertex(vertex, false);
+        return task.status() == TaskStatus.DELETING;
+    }
+
+    private boolean storedTaskAllowsResultSave(Id id) {
+        Iterator<Vertex> vertices = this.tx().queryTaskInfos(id);
+        Vertex vertex = QueryResults.one(vertices);
+        if (vertex == null) {
+            return false;
+        }
+        HugeTask<?> task = HugeTask.fromVertex(vertex, false);
+        return task.status() != TaskStatus.DELETING;
+    }
+
+    private void saveTaskWithoutResult(HugeTask<?> task) {
+        this.call(() -> {
+            HugeVertex vertex = this.tx().constructTaskVertex(task);
+            this.tx().deleteIndex(vertex);
+            return this.tx().addVertex(vertex);
         });
     }
 
     @Override
     public <V> HugeTask<V> delete(Id id, boolean force) {
         HugeTask<?> task = this.taskWithoutResult(id);
+        HugeTask<?> running = this.runningTasks.get(id);
 
         if (!force && !task.completed()) {
-            // Can't delete running tasks without force, mark DELETING instead
-            // and let cronSchedule() perform the actual deletion later
-            this.updateStatus(id, null, TaskStatus.DELETING);
-            return null;
+            if (running != null) {
+                this.markTaskDeleting(running);
+                running.cancel(true);
+                @SuppressWarnings("unchecked")
+                HugeTask<V> result = (HugeTask<V>) running;
+                return result;
+            }
+
+            // Can't safely mark a remotely running task without owning its
+            // lock; the owner may otherwise overwrite DELETING on final save.
+            LockResult lockResult = tryLockTask(id.asString());
+            checkDeleteLock(id, lockResult);
+            try {
+                this.markTaskDeleting(task);
+            } finally {
+                unlockTask(id.asString(), lockResult);
+            }
+            @SuppressWarnings("unchecked")
+            HugeTask<V> result = (HugeTask<V>) task;
+            return result;
+        }
+
+        boolean runningLocally = running != null;
+        if (running != null) {
+            this.markTaskDeleting(running);
+            running.cancel(true);
+            if (!force) {
+                @SuppressWarnings("unchecked")
+                HugeTask<V> result = (HugeTask<V>) running;
+                return result;
+            }
+        }
+
+        if (!task.completed() && !runningLocally) {
+            LockResult lockResult = tryLockTask(id.asString());
+            checkDeleteLock(id, lockResult);
+            try {
+                if (task.status() != TaskStatus.DELETING) {
+                    this.markTaskDeleting(task);
+                }
+                return this.deleteFromDB(id);
+            } finally {
+                unlockTask(id.asString(), lockResult);
+            }
         }
 
         // Write DELETING status before attempting physical delete so that a
         // failed result deletion is recoverable via cronSchedule().
-        if (task != null && task.status() != TaskStatus.DELETING) {
-            initTaskParams(task);
-            task.overwriteStatus(TaskStatus.DELETING);
-            this.call(() -> {
-                HugeVertex vertex = this.tx().constructTaskVertex(task);
-                this.tx().deleteIndex(vertex);
-                return this.tx().addVertex(vertex);
-            });
+        if (task.status() != TaskStatus.DELETING) {
+            this.markTaskDeleting(task);
         }
+
         return this.deleteFromDB(id);
+    }
+
+    private static void checkDeleteLock(Id id, LockResult lockResult) {
+        E.checkState(lockResult.lockSuccess(),
+                     "Can't delete task '%s' because it is locked by another " +
+                     "server, please retry later", id);
     }
 
     @Override
@@ -410,19 +537,6 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
 
         // set closed
         this.closed.set(true);
-
-        // cancel all running tasks
-        for (HugeTask<?> task : this.runningTasks.values()) {
-            LOG.info("cancel task({}) @({}/{}) when closing scheduler",
-                     task.id(), graphSpace, graphName);
-            this.cancel(task);
-        }
-
-        try {
-            this.waitUntilAllTasksCompleted(10);
-        } catch (TimeoutException e) {
-            LOG.warn("Tasks not completed when close distributed task scheduler", e);
-        }
 
         // cancel cron thread
         if (!cronFuture.isDone() && !cronFuture.isCancelled()) {
@@ -442,6 +556,19 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             LOG.warn("Interrupted while waiting for cron task to complete", e);
         } catch (ExecutionException e) {
             LOG.warn("Exception while waiting for cron task to complete", e);
+        }
+
+        // cancel all running tasks
+        for (HugeTask<?> task : this.runningTasks.values()) {
+            LOG.info("cancel task({}) @({}/{}) when closing scheduler",
+                     task.id(), graphSpace, graphName);
+            this.cancel(task);
+        }
+
+        try {
+            this.waitUntilAllTasksCompleted(10);
+        } catch (TimeoutException e) {
+            LOG.warn("Tasks not completed when close distributed task scheduler", e);
         }
 
         if (!this.taskDbExecutor.isShutdown()) {
@@ -735,6 +862,7 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
                     LOG.warn("exception when execute task", t);
                 } finally {
                     runningTasks.remove(task.id());
+                    deletingTasks.remove(task.id());
                     unlockTask(task.id().asString(), lockResult);
 
                     LOG.info("task({}) finished.", task.id().toString());

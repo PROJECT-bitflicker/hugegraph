@@ -17,9 +17,13 @@
 
 package org.apache.hugegraph.core;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.hugegraph.HugeException;
@@ -54,11 +58,70 @@ public class TaskCoreTest extends BaseCoreTest {
 
         HugeGraph graph = graph();
         TaskScheduler scheduler = graph.taskScheduler();
+        this.clearTasks(scheduler);
+    }
 
+    private void clearTasks(TaskScheduler scheduler) {
+        for (int pass = 0; pass < 3; pass++) {
+            List<HugeTask<Object>> tasks = listTasks(scheduler);
+            if (tasks.isEmpty()) {
+                return;
+            }
+
+            for (HugeTask<Object> task : tasks) {
+                if (!task.completed() && task.status() != TaskStatus.DELETING) {
+                    scheduler.cancel(task);
+                }
+            }
+
+            try {
+                scheduler.waitUntilAllTasksCompleted(10);
+            } catch (TimeoutException ignored) {
+                // Delete below will either remove completed tasks or fail loudly.
+            }
+
+            for (HugeTask<Object> task : listTasks(scheduler)) {
+                deleteTaskAndWaitGone(scheduler, task.id());
+            }
+        }
+
+        Assert.fail(String.format("Failed to clean tasks: %s", listTasks(scheduler)));
+    }
+
+    private static List<HugeTask<Object>> listTasks(TaskScheduler scheduler) {
+        List<HugeTask<Object>> tasks = new ArrayList<>();
         Iterator<HugeTask<Object>> iter = scheduler.tasks(null, -1, null);
         while (iter.hasNext()) {
-            scheduler.delete(iter.next().id(), false);
+            tasks.add(iter.next());
         }
+        return tasks;
+    }
+
+    private static void waitUntilTaskRunning(TaskScheduler scheduler) {
+        for (int pass = 0; pass < 1000; pass++) {
+            if (scheduler.pendingTasks() > 0) {
+                return;
+            }
+            sleepAWhile(10L);
+        }
+        Assert.fail("Timed out waiting for task to start running");
+    }
+
+    private static void deleteTaskAndWaitGone(TaskScheduler scheduler, Id id) {
+        for (int pass = 0; pass < 30; pass++) {
+            try {
+                scheduler.delete(id, true);
+            } catch (NotFoundException ignored) {
+                return;
+            }
+            try {
+                scheduler.task(id);
+            } catch (NotFoundException ignored) {
+                return;
+            }
+            sleepAWhile(100L);
+        }
+        Assert.fail(String.format("Failed to delete task '%s'", id));
     }
 
     @Test
@@ -85,16 +148,6 @@ public class TaskCoreTest extends BaseCoreTest {
                 Assert.assertContains("Can't delete incomplete task '88888'",
                                       e.getMessage());
             });
-        } else {
-            // DistributedTaskScheduler: delete(id, false) on a running task
-            // marks it as DELETING and returns null (async cleanup via
-            // cronSchedule). Skip the wait/verify section — the task is being
-            // deleted, and completed-task delete is tested at line 113 below.
-            HugeTask<?> result = scheduler.delete(id, false);
-            Assert.assertNull(result);
-            HugeTask<?> marked = scheduler.task(id);
-            Assert.assertEquals(TaskStatus.DELETING, marked.status());
-            return;
         }
 
         task = scheduler.waitUntilTaskCompleted(task.id(), 10);
@@ -127,6 +180,128 @@ public class TaskCoreTest extends BaseCoreTest {
         Assert.assertThrows(NotFoundException.class, () -> {
             scheduler.task(id);
         });
+    }
+
+    @Test
+    public void testDeleteIncompleteTask() {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+
+        Id id = IdGenerator.of(88891);
+        HugeTask<?> task = new HugeTask<>(id, null, new SleepCallable<>());
+        task.type("test");
+        task.name("delete-incomplete-task");
+        scheduler.schedule(task);
+
+        try {
+            if (scheduler instanceof StandardTaskScheduler) {
+                Assert.assertThrows(IllegalArgumentException.class, () -> {
+                    scheduler.delete(id, false);
+                }, e -> {
+                    Assert.assertContains("Can't delete incomplete task '88891'",
+                                          e.getMessage());
+                });
+            } else {
+                waitUntilTaskRunning(scheduler);
+                HugeTask<?> deleted = scheduler.delete(id, false);
+                Assert.assertNotNull(deleted);
+                Assert.assertEquals(TaskStatus.DELETING, deleted.status());
+                Assert.assertEquals(TaskStatus.DELETING, scheduler.task(id).status());
+            }
+        } finally {
+            try {
+                scheduler.waitUntilAllTasksCompleted(10);
+            } catch (TimeoutException ignored) {
+                // Force cleanup below handles non-interruptible test tasks.
+            }
+            deleteTaskAndWaitGone(scheduler, id);
+        }
+    }
+
+    @Test
+    public void testDeleteRemoteLockedIncompleteTaskFailsFast() {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+        if (scheduler instanceof StandardTaskScheduler) {
+            return;
+        }
+
+        Id id = IdGenerator.of(88892);
+        BlockingCallable.reset();
+        HugeTask<?> task = new HugeTask<>(id, null, new BlockingCallable<>());
+        task.type("test");
+        task.name("delete-remote-locked-incomplete-task");
+        scheduler.schedule(task);
+
+        Map<Id, HugeTask<?>> runningTasks =
+                Whitebox.getInternalState(scheduler, "runningTasks");
+        HugeTask<?> running = null;
+        try {
+            waitUntilTaskRunning(scheduler);
+            Assert.assertTrue(BlockingCallable.awaitStarted());
+            running = runningTasks.remove(id);
+            Assert.assertNotNull(running);
+
+            Assert.assertThrows(IllegalStateException.class, () -> {
+                scheduler.delete(id, false);
+            }, e -> {
+                Assert.assertContains("locked by another server", e.getMessage());
+            });
+            Assert.assertThrows(IllegalStateException.class, () -> {
+                scheduler.delete(id, true);
+            }, e -> {
+                Assert.assertContains("locked by another server", e.getMessage());
+            });
+            Assert.assertNotEquals(TaskStatus.DELETING, scheduler.task(id).status());
+        } finally {
+            if (running != null && !running.completed()) {
+                runningTasks.put(id, running);
+            }
+            BlockingCallable.release();
+            try {
+                scheduler.waitUntilAllTasksCompleted(10);
+            } catch (TimeoutException ignored) {
+                // Force cleanup below handles non-interruptible test tasks.
+            }
+            deleteTaskAndWaitGone(scheduler, id);
+        }
+    }
+
+    @Test
+    public void testLegacyTaskStatusesAreNotRestored() {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+        if (!(scheduler instanceof StandardTaskScheduler)) {
+            return;
+        }
+
+        Id schedulingId = IdGenerator.of(88893);
+        Id scheduledId = IdGenerator.of(88894);
+        HugeTask<?> scheduling = new HugeTask<>(schedulingId, null,
+                                                new SleepCallable<>());
+        scheduling.type("test");
+        scheduling.name("legacy-scheduling-task");
+        scheduling.overwriteStatus(TaskStatus.SCHEDULING);
+        HugeTask<?> scheduled = new HugeTask<>(scheduledId, null,
+                                               new SleepCallable<>());
+        scheduled.type("test");
+        scheduled.name("legacy-scheduled-task");
+        scheduled.overwriteStatus(TaskStatus.SCHEDULED);
+
+        try {
+            scheduler.save(scheduling);
+            scheduler.save(scheduled);
+            scheduler.restoreTasks();
+
+            Assert.assertEquals(0, scheduler.pendingTasks());
+            Assert.assertEquals(TaskStatus.SCHEDULING,
+                                scheduler.task(schedulingId).status());
+            Assert.assertEquals(TaskStatus.SCHEDULED,
+                                scheduler.task(scheduledId).status());
+        } finally {
+            deleteTaskAndWaitGone(scheduler, schedulingId);
+            deleteTaskAndWaitGone(scheduler, scheduledId);
+        }
     }
 
     @Test
@@ -814,6 +989,46 @@ public class TaskCoreTest extends BaseCoreTest {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
             // ignore
+        }
+    }
+
+    public static class BlockingCallable<V> extends TaskCallable<V> {
+
+        private static volatile CountDownLatch started = new CountDownLatch(1);
+        private static volatile CountDownLatch release = new CountDownLatch(1);
+
+        public BlockingCallable() {
+            // pass
+        }
+
+        public static void reset() {
+            started = new CountDownLatch(1);
+            release = new CountDownLatch(1);
+        }
+
+        public static boolean awaitStarted() {
+            try {
+                return started.await(10L, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
+        public static void release() {
+            release.countDown();
+        }
+
+        @Override
+        public V call() throws Exception {
+            started.countDown();
+            release.await(10L, TimeUnit.SECONDS);
+            return null;
+        }
+
+        @Override
+        public void done() {
+            this.graph().taskScheduler().save(this.task());
         }
     }
 

@@ -321,6 +321,14 @@ public class MultiGraphsTest extends BaseCoreTest {
     }
 
     @Test
+    public void testOpenGraphWithDeprecatedTaskSchedulerType() {
+        HugeGraph graph = openGraphWithBackend("legacySchedulerType",
+                                               "rocksdb", "binary",
+                                               "task.scheduler_type", "local");
+        destroyGraphs(ImmutableList.of(graph));
+    }
+
+    @Test
     public void testCreateGraphsWithMultiDisksForRocksDB() {
         HugeGraph g1 = openGraphWithBackend("g1", "rocksdb", "binary", "rocksdb.data_disks",
                                             "[g/secondary_index:rocksdb-index1," +
