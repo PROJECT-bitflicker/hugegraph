@@ -85,7 +85,10 @@ public class TaskCoreTest extends BaseCoreTest {
             }
         }
 
-        Assert.fail(String.format("Failed to clean tasks: %s", listTasks(scheduler)));
+        List<HugeTask<Object>> remaining = listTasks(scheduler);
+        if (!remaining.isEmpty()) {
+            Assert.fail(String.format("Failed to clean tasks: %s", remaining));
+        }
     }
 
     private static List<HugeTask<Object>> listTasks(TaskScheduler scheduler) {
@@ -180,6 +183,47 @@ public class TaskCoreTest extends BaseCoreTest {
         Assert.assertThrows(NotFoundException.class, () -> {
             scheduler.task(id);
         });
+    }
+
+    @Test
+    public void testScheduleDoesNotPersistTaskWhenQueueFull() {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+        if (!(scheduler instanceof StandardTaskScheduler)) {
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<Id, HugeTask<?>> tasks = Whitebox.getInternalState(scheduler,
+                                                               "tasks");
+        List<Id> placeholderIds = new ArrayList<>();
+        Id id = IdGenerator.of(999996);
+        try {
+            for (int i = 0; tasks.size() < TaskScheduler.MAX_PENDING_TASKS; i++) {
+                Id placeholderId = IdGenerator.of(880000 + i);
+                tasks.put(placeholderId, new HugeTask<>(placeholderId, null,
+                                                        new SleepCallable<>()));
+                placeholderIds.add(placeholderId);
+            }
+
+            HugeTask<?> task = new HugeTask<>(id, null, new SleepCallable<>());
+            task.type("test");
+            task.name("queue-full-task");
+
+            Assert.assertThrows(IllegalArgumentException.class, () -> {
+                scheduler.schedule(task);
+            }, e -> {
+                Assert.assertContains("Pending tasks size", e.getMessage());
+            });
+            Assert.assertThrows(NotFoundException.class, () -> {
+                scheduler.task(id);
+            });
+        } finally {
+            for (Id placeholderId : placeholderIds) {
+                tasks.remove(placeholderId);
+            }
+            tasks.remove(id);
+        }
     }
 
     @Test

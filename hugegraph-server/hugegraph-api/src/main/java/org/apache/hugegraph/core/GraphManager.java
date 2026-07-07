@@ -1579,7 +1579,7 @@ public final class GraphManager {
 
         String backend = config.get(CoreOptions.BACKEND);
         boolean needPdPeers = this.conf.get(ServerOptions.USE_PD) ||
-                              "hstore".equals(backend);
+                              StringUtils.equalsIgnoreCase("hstore", backend);
         if (needPdPeers) {
             config.addProperty(CoreOptions.PD_PEERS.name(), this.pdPeers);
         }
@@ -1650,8 +1650,9 @@ public final class GraphManager {
         if (enableRoleElection) {
             LOG.warn("The server.role_election option is deprecated and no " +
                      "longer supported (removed with server_info persistence). " +
-                     "Nodes operate as WORKER with local scheduling. Set " +
-                     "enable_server_role_election=false to suppress this warning.");
+                     "The configured server.role is still used for local node " +
+                     "role initialization. Set server.role_election=false to " +
+                     "suppress this warning.");
         }
 
         String role = config.get(ServerOptions.SERVER_ROLE);

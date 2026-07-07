@@ -208,11 +208,14 @@ public class StandardTaskScheduler implements TaskScheduler {
         }
 
         task.status(TaskStatus.QUEUED);
-        this.save(task);
-        return this.submitTask(task);
+        return this.submitTask(task, true);
     }
 
     private <V> Future<?> submitTask(HugeTask<V> task) {
+        return this.submitTask(task, false);
+    }
+
+    private <V> Future<?> submitTask(HugeTask<V> task, boolean saveAfterQueued) {
         int size = this.tasks.size() + 1;
         E.checkArgument(size <= MAX_PENDING_TASKS,
                         "Pending tasks size %s has exceeded the max limit %s",
@@ -220,6 +223,14 @@ public class StandardTaskScheduler implements TaskScheduler {
         this.initTaskCallable(task);
         assert !this.tasks.containsKey(task.id()) : task;
         this.tasks.put(task.id(), task);
+        if (saveAfterQueued) {
+            try {
+                this.save(task);
+            } catch (RuntimeException e) {
+                this.tasks.remove(task.id());
+                throw e;
+            }
+        }
         return this.taskExecutor.submit(task);
     }
 

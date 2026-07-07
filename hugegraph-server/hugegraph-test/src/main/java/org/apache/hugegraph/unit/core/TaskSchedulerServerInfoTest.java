@@ -81,9 +81,12 @@ public class TaskSchedulerServerInfoTest {
         HugeConfig config = newConfig();
 
         GraphManager manager = new GraphManager(config, new EventHub("test"));
-
-        Assert.assertEquals("", config.get(ServerOptions.SERVER_ID));
-        Assert.assertNull(manager.globalNodeRoleInfo().nodeId());
+        try {
+            Assert.assertEquals("", config.get(ServerOptions.SERVER_ID));
+            Assert.assertNull(manager.globalNodeRoleInfo().nodeId());
+        } finally {
+            manager.close();
+        }
     }
 
     @Test
@@ -93,7 +96,11 @@ public class TaskSchedulerServerInfoTest {
         HugeConfig config = new HugeConfig(conf);
 
         GraphManager manager = new GraphManager(config, new EventHub("test"));
-        Assert.assertNotNull(manager);
+        try {
+            Assert.assertNotNull(manager);
+        } finally {
+            manager.close();
+        }
     }
 
     @Test
@@ -102,10 +109,14 @@ public class TaskSchedulerServerInfoTest {
         GraphManager manager = new GraphManager(serverConfig, new EventHub("test"));
         HugeConfig graphConfig = newGraphConfig("rocksdb");
 
-        Whitebox.invoke(manager.getClass(), "transferPdPeersConfig",
-                        manager, graphConfig);
+        try {
+            Whitebox.invoke(manager.getClass(), "transferPdPeersConfig",
+                            manager, graphConfig);
 
-        Assert.assertFalse(graphConfig.containsKey(CoreOptions.PD_PEERS.name()));
+            Assert.assertFalse(graphConfig.containsKey(CoreOptions.PD_PEERS.name()));
+        } finally {
+            manager.close();
+        }
     }
 
     @Test
@@ -113,12 +124,21 @@ public class TaskSchedulerServerInfoTest {
         HugeConfig serverConfig = newConfig();
         GraphManager manager = new GraphManager(serverConfig, new EventHub("test"));
         HugeConfig graphConfig = newGraphConfig("hstore");
+        HugeConfig mixedCaseGraphConfig = newGraphConfig("HStore");
 
-        Whitebox.invoke(manager.getClass(), "transferPdPeersConfig",
-                        manager, graphConfig);
+        try {
+            Whitebox.invoke(manager.getClass(), "transferPdPeersConfig",
+                            manager, graphConfig);
+            Whitebox.invoke(manager.getClass(), "transferPdPeersConfig",
+                            manager, mixedCaseGraphConfig);
 
-        Assert.assertEquals(serverConfig.get(ServerOptions.PD_PEERS),
-                            graphConfig.get(CoreOptions.PD_PEERS));
+            Assert.assertEquals(serverConfig.get(ServerOptions.PD_PEERS),
+                                graphConfig.get(CoreOptions.PD_PEERS));
+            Assert.assertEquals(serverConfig.get(ServerOptions.PD_PEERS),
+                                mixedCaseGraphConfig.get(CoreOptions.PD_PEERS));
+        } finally {
+            manager.close();
+        }
     }
 
     private static HugeConfig newConfig() {
