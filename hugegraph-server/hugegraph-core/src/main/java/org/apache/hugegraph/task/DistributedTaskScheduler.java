@@ -467,15 +467,15 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
         HugeTask<?> task = this.taskWithoutResult(id);
         HugeTask<?> running = this.runningTasks.get(id);
 
-        if (!force && !task.completed()) {
-            if (running != null) {
-                this.markTaskDeleting(running);
-                running.cancel(true);
-                @SuppressWarnings("unchecked")
-                HugeTask<V> result = (HugeTask<V>) running;
-                return result;
-            }
+        if (running != null) {
+            this.markTaskDeleting(running);
+            running.cancel(true);
+            @SuppressWarnings("unchecked")
+            HugeTask<V> result = (HugeTask<V>) running;
+            return result;
+        }
 
+        if (!force && !task.completed()) {
             // Can't safely mark a remotely running task without owning its
             // lock; the owner may otherwise overwrite DELETING on final save.
             LockResult lockResult = tryLockTask(id.asString());
@@ -490,18 +490,7 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             return result;
         }
 
-        boolean runningLocally = running != null;
-        if (running != null) {
-            this.markTaskDeleting(running);
-            running.cancel(true);
-            if (!force) {
-                @SuppressWarnings("unchecked")
-                HugeTask<V> result = (HugeTask<V>) running;
-                return result;
-            }
-        }
-
-        if (!task.completed() && !runningLocally) {
+        if (!task.completed()) {
             LockResult lockResult = tryLockTask(id.asString());
             checkDeleteLock(id, lockResult);
             try {
@@ -569,6 +558,7 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             this.waitUntilAllTasksCompleted(10);
         } catch (TimeoutException e) {
             LOG.warn("Tasks not completed when close distributed task scheduler", e);
+            return false;
         }
 
         if (!this.taskDbExecutor.isShutdown()) {

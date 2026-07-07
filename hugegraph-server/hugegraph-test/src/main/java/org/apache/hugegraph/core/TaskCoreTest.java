@@ -268,6 +268,40 @@ public class TaskCoreTest extends BaseCoreTest {
     }
 
     @Test
+    public void testForceDeleteRunningDistributedTaskWaitsForRunnerExit() {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+        if (scheduler instanceof StandardTaskScheduler) {
+            return;
+        }
+
+        Id id = IdGenerator.of(88895);
+        BlockingCallable.reset();
+        HugeTask<?> task = new HugeTask<>(id, null, new BlockingCallable<>());
+        task.type("test");
+        task.name("force-delete-running-distributed-task");
+        scheduler.schedule(task);
+
+        try {
+            waitUntilTaskRunning(scheduler);
+            Assert.assertTrue(BlockingCallable.awaitStarted());
+
+            HugeTask<?> deleted = scheduler.delete(id, true);
+            Assert.assertNotNull(deleted);
+            Assert.assertEquals(TaskStatus.DELETING, deleted.status());
+            Assert.assertEquals(TaskStatus.DELETING, scheduler.task(id).status());
+        } finally {
+            BlockingCallable.release();
+            try {
+                scheduler.waitUntilAllTasksCompleted(10);
+            } catch (TimeoutException ignored) {
+                // Force cleanup below handles non-interruptible test tasks.
+            }
+            deleteTaskAndWaitGone(scheduler, id);
+        }
+    }
+
+    @Test
     public void testLegacyTaskStatusesAreNotRestored() {
         HugeGraph graph = graph();
         TaskScheduler scheduler = graph.taskScheduler();
