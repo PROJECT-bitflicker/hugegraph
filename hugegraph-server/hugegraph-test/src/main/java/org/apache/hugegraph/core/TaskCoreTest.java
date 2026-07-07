@@ -22,7 +22,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -257,6 +259,52 @@ public class TaskCoreTest extends BaseCoreTest {
                 scheduler.waitUntilAllTasksCompleted(10);
             } catch (TimeoutException ignored) {
                 // Force cleanup below handles non-interruptible test tasks.
+            }
+            deleteTaskAndWaitGone(scheduler, id);
+        }
+    }
+
+    @Test
+    public void testForceDeleteRunningTaskDoesNotResurrectAfterDone()
+            throws Exception {
+        HugeGraph graph = graph();
+        TaskScheduler scheduler = graph.taskScheduler();
+        if (!(scheduler instanceof StandardTaskScheduler)) {
+            return;
+        }
+
+        Id id = IdGenerator.of(88897);
+        BlockingCallable.reset();
+        HugeTask<?> task = new HugeTask<>(id, null, new BlockingCallable<>());
+        task.type("test");
+        task.name("force-delete-running-task");
+        Future<?> future = null;
+
+        try {
+            future = scheduler.schedule(task);
+            waitUntilTaskRunning(scheduler);
+            Assert.assertTrue(BlockingCallable.awaitStarted());
+
+            HugeTask<?> deleted = scheduler.delete(id, true);
+            Assert.assertNotNull(deleted);
+            Assert.assertThrows(NotFoundException.class, () -> {
+                scheduler.task(id);
+            });
+
+            BlockingCallable.release();
+            try {
+                future.get(10L, TimeUnit.SECONDS);
+            } catch (CancellationException ignored) {
+                // Expected after deleting a locally running task.
+            }
+
+            Assert.assertThrows(NotFoundException.class, () -> {
+                scheduler.task(id);
+            });
+        } finally {
+            BlockingCallable.release();
+            if (future != null && !future.isDone()) {
+                future.cancel(true);
             }
             deleteTaskAndWaitGone(scheduler, id);
         }

@@ -330,7 +330,13 @@ public class DistributedTaskScheduler extends TaskAndResultScheduler {
             task.overwriteStatus(TaskStatus.CANCELLING);
         } else {
             // Status race: re-read from DB and retry with fresh status
-            HugeTask<Object> reloaded = this.taskWithoutResult(task.id());
+            HugeTask<Object> reloaded;
+            try {
+                reloaded = this.taskWithoutResult(task.id());
+            } catch (NotFoundException e) {
+                LOG.info("Task '{}' already deleted, skip cancel", task.id());
+                return;
+            }
             TaskStatus stored = reloaded.status();
             if (stored != TaskStatus.CANCELLING &&
                 !TaskStatus.COMPLETED_STATUSES.contains(stored)) {

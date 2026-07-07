@@ -459,6 +459,7 @@ public class StandardTaskScheduler implements TaskScheduler {
     public <V> HugeTask<V> delete(Id id, boolean force) {
         this.checkOnMasterNode("delete");
 
+        HugeTask<?> running = this.tasks.get(id);
         HugeTask<?> task = this.task(id, false);
         /*
          * The following is out of date when the task running on worker node:
@@ -470,7 +471,17 @@ public class StandardTaskScheduler implements TaskScheduler {
          * in fact, it is also possible to appear on the backend tasks
          * when the database status is inconsistent.
          */
-        if (task != null) {
+        if (running != null) {
+            E.checkArgument(force || running.completed(),
+                            "Can't delete incomplete task '%s' in status %s" +
+                            ", Please try to cancel the task first",
+                            id, running.status());
+            if (force && !running.completed()) {
+                running.overwriteStatus(TaskStatus.DELETING);
+                running.cancel(true);
+            }
+            this.remove(running, force);
+        } else if (task != null) {
             E.checkArgument(force || task.completed(),
                             "Can't delete incomplete task '%s' in status %s" +
                             ", Please try to cancel the task first",
