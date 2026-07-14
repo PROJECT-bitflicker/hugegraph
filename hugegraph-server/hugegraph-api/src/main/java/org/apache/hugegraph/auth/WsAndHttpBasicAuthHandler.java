@@ -53,6 +53,8 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
 
     private static final String AUTHENTICATOR = "authenticator";
     private static final String HTTP_AUTH = "http-authentication";
+    private static final String BASIC_AUTH_PREFIX = "Basic ";
+    private static final String BEARER_TOKEN_PREFIX = "Bearer ";
 
     public WsAndHttpBasicAuthHandler(Authenticator authenticator,
                                      Settings settings) {
@@ -103,28 +105,21 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
                     return;
                 }
 
-                // strip off "Basic " from the Authorization header (RFC 2617)
-                final String basic = "Basic ";
                 final String header = request.headers().get("Authorization");
-                if (!header.startsWith(basic)) {
-                    sendError(ctx, msg);
-                    return;
-                }
-                byte[] userPass = null;
-                try {
-                    final String encoded = header.substring(basic.length());
-                    userPass = this.decoder.decode(encoded);
-                } catch (IndexOutOfBoundsException iae) {
-                    sendError(ctx, msg);
-                    return;
-                } catch (IllegalArgumentException iae) {
-                    sendError(ctx, msg);
-                    return;
-                }
-                String authorization = new String(userPass,
-                                                  StandardCharsets.UTF_8);
-                String[] split = authorization.split(":");
-                if (split.length != 2) {
+                final Map<String, String> credentials = new HashMap<>();
+                if (header.startsWith(BASIC_AUTH_PREFIX)) {
+                    if (!parseBasicCredentials(header, credentials)) {
+                        sendError(ctx, msg);
+                        return;
+                    }
+                } else if (header.startsWith(BEARER_TOKEN_PREFIX)) {
+                    String token = header.substring(BEARER_TOKEN_PREFIX.length());
+                    if (token.isEmpty()) {
+                        sendError(ctx, msg);
+                        return;
+                    }
+                    credentials.put(HugeAuthenticator.KEY_TOKEN, token);
+                } else {
                     sendError(ctx, msg);
                     return;
                 }
@@ -134,9 +129,6 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
                     address = address.substring(1);
                 }
 
-                final Map<String, String> credentials = new HashMap<>();
-                credentials.put(PROPERTY_USERNAME, split[0]);
-                credentials.put(PROPERTY_PASSWORD, split[1]);
                 credentials.put(HugeAuthenticator.KEY_ADDRESS, address);
 
                 try {
@@ -146,6 +138,25 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
                     sendError(ctx, msg);
                 }
             }
+        }
+
+        private boolean parseBasicCredentials(String header,
+                                              Map<String, String> credentials) {
+            byte[] userPass;
+            try {
+                String encoded = header.substring(BASIC_AUTH_PREFIX.length());
+                userPass = this.decoder.decode(encoded);
+            } catch (IndexOutOfBoundsException | IllegalArgumentException e) {
+                return false;
+            }
+            String authorization = new String(userPass, StandardCharsets.UTF_8);
+            String[] split = authorization.split(":");
+            if (split.length != 2) {
+                return false;
+            }
+            credentials.put(PROPERTY_USERNAME, split[0]);
+            credentials.put(PROPERTY_PASSWORD, split[1]);
+            return true;
         }
 
         private void sendError(ChannelHandlerContext context, Object msg) {

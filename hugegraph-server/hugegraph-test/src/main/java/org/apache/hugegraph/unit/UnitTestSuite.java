@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.unit;
 
+import org.apache.hugegraph.auth.WsAndHttpBasicAuthHandlerTest;
 import org.apache.hugegraph.core.RoleElectionStateMachineTest;
 import org.apache.hugegraph.meta.EtcdMetaDriverTest;
 import org.apache.hugegraph.meta.MetaManagerSchemaCacheClearEventTest;
@@ -96,6 +97,7 @@ import org.junit.runners.Suite;
 
         /* api gremlin */
         GremlinQueryAPITest.class,
+        WsAndHttpBasicAuthHandlerTest.class,
 
         /* api space */
         GraphSpaceAPITest.class,
