@@ -462,6 +462,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createTarget(HugeTarget target) {
+        return this.createTarget(this.graphSpace, target);
+    }
+
+    @Override
+    public Id createTarget(String graphSpace, HugeTarget target) {
         try {
             target.create(target.update());
             updateCreator(target);
@@ -476,6 +481,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateTarget(HugeTarget target) {
+        return this.updateTarget(this.graphSpace, target);
+    }
+
+    @Override
+    public Id updateTarget(String graphSpace, HugeTarget target) {
         try {
             HugeTarget result = this.metaManager.updateTarget(graphSpace, target);
             this.invalidateUserCache();
@@ -488,10 +498,16 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public HugeTarget deleteTarget(Id id) {
+        return this.deleteTarget(this.graphSpace, id);
+    }
+
+    @Override
+    public HugeTarget deleteTarget(String graphSpace, Id id) {
         try {
-            List<HugeAccess> accesses = this.listAccessByTarget(id, -1);
+            List<HugeAccess> accesses = this.listAccessByTarget(graphSpace, id,
+                                                                -1);
             for (HugeAccess access : accesses) {
-                this.deleteAccess(access.id());
+                this.deleteAccess(graphSpace, access.id());
             }
             HugeTarget target = this.metaManager.deleteTarget(graphSpace, id);
             this.invalidateUserCache();
@@ -510,6 +526,7 @@ public class StandardAuthManagerV2 implements AuthManager {
         return getTarget(this.graphSpace, id);
     }
 
+    @Override
     public HugeTarget getTarget(String graphSpace, Id id) {
         try {
             return this.metaManager.getTarget(graphSpace, id);
@@ -537,6 +554,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeTarget> listAllTargets(long limit) {
+        return this.listAllTargets(this.graphSpace, limit);
+    }
+
+    @Override
+    public List<HugeTarget> listAllTargets(String graphSpace, long limit) {
         try {
             return this.metaManager.listAllTargets(graphSpace, limit);
         } catch (IOException e) {
@@ -550,6 +572,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createBelong(HugeBelong belong) {
+        return this.createBelong(this.graphSpace, belong);
+    }
+
+    @Override
+    public Id createBelong(String graphSpace, HugeBelong belong) {
         try {
             belong.create(belong.update());
             updateCreator(belong);
@@ -566,6 +593,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateBelong(HugeBelong belong) {
+        return this.updateBelong(this.graphSpace, belong);
+    }
+
+    @Override
+    public Id updateBelong(String graphSpace, HugeBelong belong) {
         try {
             HugeBelong result = this.metaManager.updateBelong(graphSpace, belong);
             this.invalidateUserCache();
@@ -584,6 +616,7 @@ public class StandardAuthManagerV2 implements AuthManager {
         return this.deleteBelong(this.graphSpace, id);
     }
 
+    @Override
     public HugeBelong deleteBelong(String graphSpace, Id id) {
         try {
             HugeBelong result = this.metaManager.deleteBelong(graphSpace, id);
@@ -600,6 +633,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public HugeBelong getBelong(Id id) {
+        return this.getBelong(this.graphSpace, id);
+    }
+
+    @Override
+    public HugeBelong getBelong(String graphSpace, Id id) {
         try {
             return this.metaManager.getBelong(graphSpace, id);
         } catch (IOException e) {
@@ -626,6 +664,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeBelong> listAllBelong(long limit) {
+        return this.listAllBelong(this.graphSpace, limit);
+    }
+
+    @Override
+    public List<HugeBelong> listAllBelong(String graphSpace, long limit) {
         try {
             return this.metaManager.listAllBelong(graphSpace, limit);
         } catch (IOException e) {
@@ -639,8 +682,15 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeBelong> listBelongByUser(Id user, long limit) {
+        return this.listBelongByUser(this.graphSpace, user, limit);
+    }
+
+    @Override
+    public List<HugeBelong> listBelongByUser(String graphSpace, Id user,
+                                             long limit) {
         try {
-            return this.metaManager.listBelongBySource(this.graphSpace, user, "*", limit);
+            return this.metaManager.listBelongBySource(graphSpace, user, "*",
+                                                       limit);
         } catch (IOException e) {
             throw new HugeException("IOException occurs when " +
                                     "list belong by user", e);
@@ -652,8 +702,15 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeBelong> listBelongByGroup(Id role, long limit) {
+        return this.listBelongByGroup(this.graphSpace, role, limit);
+    }
+
+    @Override
+    public List<HugeBelong> listBelongByGroup(String graphSpace, Id role,
+                                              long limit) {
         try {
-            return this.metaManager.listBelongByTarget(this.graphSpace, role, "*", limit);
+            return this.metaManager.listBelongByTarget(graphSpace, role, "*",
+                                                       limit);
         } catch (IOException e) {
             throw new HugeException("IOException occurs when " +
                                     "list belong by user", e);
@@ -665,6 +722,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createAccess(HugeAccess access) {
+        return this.createAccess(this.graphSpace, access);
+    }
+
+    @Override
+    public Id createAccess(String graphSpace, HugeAccess access) {
         try {
             access.create(access.update());
             updateCreator(access);
@@ -682,6 +744,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateAccess(HugeAccess access) {
+        return this.updateAccess(this.graphSpace, access);
+    }
+
+    @Override
+    public Id updateAccess(String graphSpace, HugeAccess access) {
         HugeAccess result = null;
         try {
             result = this.metaManager.updateAccess(graphSpace, access);
@@ -698,7 +765,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public HugeAccess deleteAccess(Id id) {
+        return this.deleteAccess(this.graphSpace, id);
+    }
 
+    @Override
+    public HugeAccess deleteAccess(String graphSpace, Id id) {
         try {
             HugeAccess result = this.metaManager.deleteAccess(graphSpace, id);
             this.invalidateUserCache();
@@ -714,6 +785,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public HugeAccess getAccess(Id id) {
+        return this.getAccess(this.graphSpace, id);
+    }
+
+    @Override
+    public HugeAccess getAccess(String graphSpace, Id id) {
         try {
             return this.metaManager.getAccess(graphSpace, id);
         } catch (IOException e) {
@@ -740,6 +816,11 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeAccess> listAllAccess(long limit) {
+        return this.listAllAccess(this.graphSpace, limit);
+    }
+
+    @Override
+    public List<HugeAccess> listAllAccess(String graphSpace, long limit) {
         try {
             return this.metaManager.listAllAccess(graphSpace, limit);
         } catch (IOException e) {
@@ -753,6 +834,12 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeAccess> listAccessByGroup(Id group, long limit) {
+        return this.listAccessByGroup(this.graphSpace, group, limit);
+    }
+
+    @Override
+    public List<HugeAccess> listAccessByGroup(String graphSpace, Id group,
+                                              long limit) {
         try {
             return this.metaManager.listAccessByGroup(graphSpace, group, limit);
         } catch (IOException e) {
@@ -766,8 +853,15 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public List<HugeAccess> listAccessByTarget(Id target, long limit) {
+        return this.listAccessByTarget(this.graphSpace, target, limit);
+    }
+
+    @Override
+    public List<HugeAccess> listAccessByTarget(String graphSpace, Id target,
+                                               long limit) {
         try {
-            return this.metaManager.listAccessByTarget(this.graphSpace, target, limit);
+            return this.metaManager.listAccessByTarget(graphSpace, target,
+                                                       limit);
         } catch (IOException e) {
             throw new HugeException("IOException occurs when " +
                                     "get access list by target", e);

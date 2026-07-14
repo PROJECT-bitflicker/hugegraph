@@ -104,6 +104,10 @@ public class HugeTarget extends Entity {
         return this.graphSpace;
     }
 
+    public void graphSpace(String graphSpace) {
+        this.graphSpace = graphSpace;
+    }
+
     public String graph() {
         return this.graph;
     }
@@ -157,6 +161,9 @@ public class HugeTarget extends Entity {
             return true;
         }
         switch (key) {
+            case P.GRAPHSPACE:
+                this.graphSpace = (String) value;
+                break;
             case P.NAME:
                 this.name = (String) value;
                 break;
@@ -165,6 +172,9 @@ public class HugeTarget extends Entity {
                 break;
             case P.URL:
                 this.url = (String) value;
+                break;
+            case P.DESCRIPTION:
+                this.description = (String) value;
                 break;
             case P.RESS:
                 if (value instanceof String) {
@@ -226,9 +236,14 @@ public class HugeTarget extends Entity {
 
         Map<String, Object> map = new HashMap<>();
 
+        map.put(Hidden.unHide(P.GRAPHSPACE), this.graphSpace);
         map.put(Hidden.unHide(P.NAME), this.name);
         map.put(Hidden.unHide(P.GRAPH), this.graph);
         map.put(Hidden.unHide(P.URL), this.url);
+
+        if (this.description != null) {
+            map.put(Hidden.unHide(P.DESCRIPTION), this.description);
+        }
 
         if (this.resources != null && this.resources != EMPTY) {
             map.put(Hidden.unHide(P.RESS), this.resources);
@@ -253,9 +268,11 @@ public class HugeTarget extends Entity {
         public static final String ID = T.id.getAccessor();
         public static final String LABEL = T.label.getAccessor();
 
+        public static final String GRAPHSPACE = "~graphspace";
         public static final String NAME = "~target_name";
         public static final String GRAPH = "~target_graph";
         public static final String URL = "~target_url";
+        public static final String DESCRIPTION = "~target_description";
         public static final String RESS = "~target_resources";
 
         public static String unhide(String key) {

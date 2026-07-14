@@ -18,6 +18,7 @@
 package org.apache.hugegraph.api.auth;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.api.filter.StatusFilter.Status;
@@ -68,10 +69,13 @@ public class AccessAPI extends API {
                          @PathParam("graphspace") String graphSpace,
                          JsonAccess jsonAccess) {
         LOG.debug("GraphSpace [{}] create access: {}", graphSpace, jsonAccess);
+        GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
         checkCreatingBody(jsonAccess);
 
-        HugeAccess access = jsonAccess.build();
-        access.id(manager.authManager().createAccess(access));
+        HugeAccess access = jsonAccess.build(graphSpace);
+        GraphSpaceGroupAPI.checkScopedGroupReference(
+                manager.authManager(), graphSpace, access.source());
+        access.id(manager.authManager().createAccess(graphSpace, access));
         return manager.serializer().writeAuthElement(access);
     }
 
@@ -87,16 +91,21 @@ public class AccessAPI extends API {
                          @PathParam("id") String id,
                          JsonAccess jsonAccess) {
         LOG.debug("GraphSpace [{}] update access: {}", graphSpace, jsonAccess);
+        GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
         checkUpdatingBody(jsonAccess);
 
         HugeAccess access;
         try {
-            access = manager.authManager().getAccess(UserAPI.parseId(id));
+            access = manager.authManager().getAccess(graphSpace,
+                                                     UserAPI.parseId(id));
         } catch (NotFoundException e) {
             throw new IllegalArgumentException("Invalid access id: " + id);
         }
+        checkGraphSpace(graphSpace, access);
+        GraphSpaceGroupAPI.checkScopedGroupReference(
+                manager.authManager(), graphSpace, access.source());
         access = jsonAccess.build(access);
-        manager.authManager().updateAccess(access);
+        manager.authManager().updateAccess(graphSpace, access);
         return manager.serializer().writeAuthElement(access);
     }
 
@@ -114,19 +123,26 @@ public class AccessAPI extends API {
                        @QueryParam("limit") @DefaultValue("100") long limit) {
         LOG.debug("GraphSpace [{}] list accesses by group {} or target {}",
                   graphSpace, group, target);
+        GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
         E.checkArgument(group == null || target == null,
                         "Can't pass both group and target at the same time");
 
         List<HugeAccess> belongs;
         if (group != null) {
             Id id = UserAPI.parseId(group);
-            belongs = manager.authManager().listAccessByGroup(id, limit);
+            belongs = manager.authManager().listAccessByGroup(graphSpace, id,
+                                                              limit);
         } else if (target != null) {
             Id id = UserAPI.parseId(target);
-            belongs = manager.authManager().listAccessByTarget(id, limit);
+            belongs = manager.authManager().listAccessByTarget(graphSpace, id,
+                                                               limit);
         } else {
-            belongs = manager.authManager().listAllAccess(limit);
+            belongs = manager.authManager().listAllAccess(graphSpace, limit);
         }
+        belongs = belongs.stream()
+                         .filter(access -> graphSpace.equals(
+                                 access.graphSpace()))
+                         .collect(Collectors.toList());
         return manager.serializer().writeAuthElements("accesses", belongs);
     }
 
@@ -140,8 +156,11 @@ public class AccessAPI extends API {
                       @Parameter(description = "The access id")
                       @PathParam("id") String id) {
         LOG.debug("GraphSpace [{}] get access: {}", graphSpace, id);
+        GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
 
-        HugeAccess access = manager.authManager().getAccess(UserAPI.parseId(id));
+        HugeAccess access = manager.authManager().getAccess(
+                graphSpace, UserAPI.parseId(id));
+        checkGraphSpace(graphSpace, access);
         return manager.serializer().writeAuthElement(access);
     }
 
@@ -155,17 +174,29 @@ public class AccessAPI extends API {
                        @Parameter(description = "The access id")
                        @PathParam("id") String id) {
         LOG.debug("GraphSpace [{}] delete access: {}", graphSpace, id);
+        GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
 
         try {
-            manager.authManager().deleteAccess(UserAPI.parseId(id));
+            HugeAccess access = manager.authManager().getAccess(
+                    graphSpace, UserAPI.parseId(id));
+            checkGraphSpace(graphSpace, access);
+            manager.authManager().deleteAccess(graphSpace,
+                                               UserAPI.parseId(id));
         } catch (NotFoundException e) {
             throw new IllegalArgumentException("Invalid access id: " + id);
         }
     }
 
+    static void checkGraphSpace(String graphSpace, HugeAccess access) {
+        if (!graphSpace.equals(access.graphSpace())) {
+            throw new jakarta.ws.rs.ForbiddenException(
+                    "Permission denied: access belongs to another graphspace");
+        }
+    }
+
     @JsonIgnoreProperties(value = {"id", "access_creator",
                                    "access_create", "access_update"})
-    private static class JsonAccess implements Checkable {
+    static class JsonAccess implements Checkable {
 
         @JsonProperty("group")
         @Schema(description = "The group id", required = true)
@@ -196,8 +227,9 @@ public class AccessAPI extends API {
             return access;
         }
 
-        public HugeAccess build() {
-            HugeAccess access = new HugeAccess(UserAPI.parseId(this.group),
+        public HugeAccess build(String graphSpace) {
+            HugeAccess access = new HugeAccess(graphSpace,
+                                               UserAPI.parseId(this.group),
                                                UserAPI.parseId(this.target));
             access.permission(this.permission);
             access.description(this.description);
