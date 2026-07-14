@@ -90,7 +90,7 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
     private static class HttpBasicAuthHandler
             extends AbstractAuthenticationHandler {
 
-        private final Base64.Decoder decoder = Base64.getUrlDecoder();
+        private final Base64.Decoder decoder = Base64.getDecoder();
 
         public HttpBasicAuthHandler(Authenticator authenticator) {
             super(authenticator);
@@ -146,11 +146,11 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
             try {
                 String encoded = header.substring(BASIC_AUTH_PREFIX.length());
                 userPass = this.decoder.decode(encoded);
-            } catch (IndexOutOfBoundsException | IllegalArgumentException e) {
+            } catch (IllegalArgumentException e) {
                 return false;
             }
             String authorization = new String(userPass, StandardCharsets.UTF_8);
-            String[] split = authorization.split(":");
+            String[] split = authorization.split(":", 2);
             if (split.length != 2) {
                 return false;
             }

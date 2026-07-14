@@ -94,6 +94,51 @@ public class WsAndHttpBasicAuthHandlerTest {
         channel.finishAndReleaseAll();
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testBasicPasswordContainingColonAuthenticatesHttpRequest()
+            throws Exception {
+        Authenticator authenticator = Mockito.mock(Authenticator.class);
+        Mockito.when(authenticator.authenticate(Mockito.anyMap()))
+               .thenReturn(new AuthenticatedUser("admin"));
+        EmbeddedChannel channel = channel(authenticator);
+        String encoded = Base64.getEncoder().encodeToString(
+                "admin:p:assword".getBytes(StandardCharsets.UTF_8));
+
+        channel.writeInbound(request("Basic " + encoded));
+
+        ArgumentCaptor<Map<String, String>> credentials =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(authenticator).authenticate(credentials.capture());
+        Assert.assertEquals("admin", credentials.getValue().get("username"));
+        Assert.assertEquals("p:assword",
+                            credentials.getValue().get("password"));
+        channel.finishAndReleaseAll();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testBasicCredentialsUseStandardBase64Decoder()
+            throws Exception {
+        Authenticator authenticator = Mockito.mock(Authenticator.class);
+        Mockito.when(authenticator.authenticate(Mockito.anyMap()))
+               .thenReturn(new AuthenticatedUser("admin"));
+        EmbeddedChannel channel = channel(authenticator);
+        String password = "\uFF7F";
+        String encoded = Base64.getEncoder().encodeToString(
+                ("admin:" + password).getBytes(StandardCharsets.UTF_8));
+        Assert.assertTrue(encoded.contains("/"));
+
+        channel.writeInbound(request("Basic " + encoded));
+
+        ArgumentCaptor<Map<String, String>> credentials =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(authenticator).authenticate(credentials.capture());
+        Assert.assertEquals(password,
+                            credentials.getValue().get("password"));
+        channel.finishAndReleaseAll();
+    }
+
     @Test
     public void testEmptyBearerTokenIsRejected() throws Exception {
         assertUnauthorized("Bearer ");
