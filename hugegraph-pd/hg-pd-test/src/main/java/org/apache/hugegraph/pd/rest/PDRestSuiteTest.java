@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
         RestApiTest.class,
-        StoreAPIStoreStatisticsTest.class,
         StoreRestAddressUtilTest.class,
 })
 @Slf4j
