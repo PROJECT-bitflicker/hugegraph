@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.api.filter.StatusFilter.Status;
@@ -78,7 +79,7 @@ public class GraphSpaceGroupAPI extends API {
         LOG.debug("GraphSpace [{}] create scoped group", graphSpace);
         ensureManager(manager, graphSpace);
         checkCreatingBody(jsonGroup);
-        HugeGroup group = jsonGroup.build();
+        HugeGroup group = jsonGroup.build(graphSpace);
         checkScopedGroup(graphSpace, group);
         group.id(manager.authManager().createGroup(group));
         return manager.serializer().writeAuthElement(group);
@@ -111,9 +112,21 @@ public class GraphSpaceGroupAPI extends API {
                        @QueryParam("limit") @DefaultValue("100") long limit) {
         LOG.debug("GraphSpace [{}] list scoped groups", graphSpace);
         ensureManager(manager, graphSpace);
-        List<HugeGroup> groups = manager.authManager().listAllGroups(limit);
-        groups = filterScopedGroups(graphSpace, groups);
+        List<HugeGroup> groups = listScopedGroups(manager.authManager(),
+                                                  graphSpace, limit);
         return manager.serializer().writeAuthElements("groups", groups);
+    }
+
+    static List<HugeGroup> listScopedGroups(AuthManager authManager,
+                                             String graphSpace, long limit) {
+        E.checkArgument(limit >= -1L,
+                        "The limit must be -1 or a non-negative number");
+        List<HugeGroup> groups = authManager.listAllGroups(-1);
+        groups = filterScopedGroups(graphSpace, groups);
+        if (limit >= 0L && groups.size() > limit) {
+            return new ArrayList<>(groups.subList(0, (int) limit));
+        }
+        return groups;
     }
 
     @GET
@@ -268,8 +281,10 @@ public class GraphSpaceGroupAPI extends API {
             return group;
         }
 
-        HugeGroup build() {
-            HugeGroup group = new HugeGroup(this.name);
+        HugeGroup build(String graphSpace) {
+            String name = scopedPrefix(graphSpace) +
+                          UUID.randomUUID().toString().replace("-", "");
+            HugeGroup group = new HugeGroup(name);
             group.description(this.description);
             return group;
         }

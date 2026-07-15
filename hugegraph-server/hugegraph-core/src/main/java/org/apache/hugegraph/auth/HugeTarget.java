@@ -218,6 +218,16 @@ public class HugeTarget extends Entity {
         list.add(P.URL);
         list.add(this.url);
 
+        if (this.graphSpace != null) {
+            list.add(P.GRAPHSPACE);
+            list.add(this.graphSpace);
+        }
+
+        if (this.description != null) {
+            list.add(P.DESCRIPTION);
+            list.add(this.description);
+        }
+
         if (!this.isResourceEmpty()) {
             list.add(P.RESS);
             list.add(JsonUtil.toJson(this.resources));
@@ -293,6 +303,7 @@ public class HugeTarget extends Entity {
         @Override
         public void initSchemaIfNeeded() {
             if (this.existVertexLabel(this.label)) {
+                this.upgradeSchemaIfNeeded();
                 return;
             }
 
@@ -303,10 +314,39 @@ public class HugeTarget extends Entity {
                                     .properties(properties)
                                     .usePrimaryKeyId()
                                     .primaryKeys(P.NAME)
-                                    .nullableKeys(P.RESS)
+                                    .nullableKeys(P.GRAPHSPACE, P.DESCRIPTION,
+                                                  P.RESS)
                                     .enableLabelIndex(true)
                                     .build();
             this.graph.schemaTransaction().addVertexLabel(label);
+        }
+
+        private void upgradeSchemaIfNeeded() {
+            VertexLabel label = this.graph.graph().vertexLabel(this.label);
+            boolean changed = this.ensureNullableProperty(label,
+                                                          P.GRAPHSPACE);
+            changed |= this.ensureNullableProperty(label, P.DESCRIPTION);
+            if (changed) {
+                this.graph.schemaTransaction().updateVertexLabel(label);
+            }
+        }
+
+        private boolean ensureNullableProperty(VertexLabel label,
+                                                String property) {
+            if (!this.graph.graph().existsPropertyKey(property)) {
+                createPropertyKey(property);
+            }
+            Id propertyId = this.graph.graph().propertyKey(property).id();
+            boolean changed = false;
+            if (!label.properties().contains(propertyId)) {
+                label.property(propertyId);
+                changed = true;
+            }
+            if (!label.nullableKeys().contains(propertyId)) {
+                label.nullableKey(propertyId);
+                changed = true;
+            }
+            return changed;
         }
 
         private String[] initProperties() {
@@ -315,6 +355,8 @@ public class HugeTarget extends Entity {
             props.add(createPropertyKey(P.NAME));
             props.add(createPropertyKey(P.GRAPH));
             props.add(createPropertyKey(P.URL));
+            props.add(createPropertyKey(P.GRAPHSPACE));
+            props.add(createPropertyKey(P.DESCRIPTION));
             props.add(createPropertyKey(P.RESS));
 
             return super.initProperties(props);

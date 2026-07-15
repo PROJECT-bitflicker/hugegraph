@@ -17,6 +17,7 @@
 
 package org.apache.hugegraph.api.auth;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -26,9 +27,55 @@ import org.apache.hugegraph.testutil.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.ForbiddenException;
 
 public class GraphSpaceGroupAPITest {
+
+    @Test
+    public void testCreatePayloadCannotControlScopedGroupName()
+            throws Exception {
+        GraphSpaceGroupAPI.JsonGroup jsonGroup = new ObjectMapper().readValue(
+                "{\"group_name\":\"client-controlled\"," +
+                "\"group_description\":\"description\"}",
+                GraphSpaceGroupAPI.JsonGroup.class);
+
+        HugeGroup group = jsonGroup.build("SPACE_A");
+
+        Assert.assertTrue(group.name().matches(
+                GraphSpaceGroupAPI.scopedPrefix("SPACE_A") +
+                "[0-9a-f]{32}"));
+        Assert.assertNotEquals("client-controlled", group.name());
+        Assert.assertEquals("description", group.description());
+    }
+
+    @Test
+    public void testListFiltersBeforeApplyingLimit() {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+
+        List<HugeGroup> groups = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            groups.add(group("SPACE_B", (char) ('a' + i % 6)));
+        }
+        groups.add(group("SPACE_A", 'a'));
+        groups.add(group("SPACE_A", 'b'));
+        Mockito.when(auth.listAllGroups(Mockito.anyLong())).thenReturn(groups);
+
+        List<HugeGroup> one = GraphSpaceGroupAPI.listScopedGroups(
+                              auth, "SPACE_A", 1);
+        List<HugeGroup> hundred = GraphSpaceGroupAPI.listScopedGroups(
+                                  auth, "SPACE_A", 100);
+        List<HugeGroup> unlimited = GraphSpaceGroupAPI.listScopedGroups(
+                                    auth, "SPACE_A", -1);
+
+        Assert.assertEquals(1, one.size());
+        Assert.assertEquals(2, hundred.size());
+        Assert.assertEquals(2, unlimited.size());
+        Mockito.verify(auth, Mockito.times(3)).listAllGroups(-1);
+        Assert.assertThrows(IllegalArgumentException.class, () -> {
+            GraphSpaceGroupAPI.listScopedGroups(auth, "SPACE_A", -2);
+        });
+    }
 
     @Test
     public void testSpaceManagerCanOnlyUseOwnedGraphSpaceEndpoint() {
