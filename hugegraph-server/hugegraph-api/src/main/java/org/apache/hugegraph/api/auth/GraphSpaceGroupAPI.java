@@ -17,9 +17,7 @@
 
 package org.apache.hugegraph.api.auth;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
@@ -66,7 +64,6 @@ import jakarta.ws.rs.core.Context;
 public class GraphSpaceGroupAPI extends API {
 
     private static final Logger LOG = Log.logger(GraphSpaceGroupAPI.class);
-    private static final String SCOPED_PREFIX = "~hubble_role:v1:";
 
     @POST
     @Timed
@@ -97,7 +94,7 @@ public class GraphSpaceGroupAPI extends API {
         LOG.debug("GraphSpace [{}] update scoped group", graphSpace);
         ensureManager(manager, graphSpace);
         checkUpdatingBody(jsonGroup);
-        HugeGroup group = getGroup(manager, id);
+        HugeGroup group = getGroup(manager.authManager(), id);
         checkScopedGroup(graphSpace, group);
         group = jsonGroup.build(group);
         manager.authManager().updateGroup(group);
@@ -119,14 +116,18 @@ public class GraphSpaceGroupAPI extends API {
 
     static List<HugeGroup> listScopedGroups(AuthManager authManager,
                                              String graphSpace, long limit) {
-        E.checkArgument(limit >= -1L,
-                        "The limit must be -1 or a non-negative number");
         List<HugeGroup> groups = authManager.listAllGroups(-1);
         groups = filterScopedGroups(graphSpace, groups);
-        if (limit >= 0L && groups.size() > limit) {
-            return new ArrayList<>(groups.subList(0, (int) limit));
+        return applyLimit(groups, limit);
+    }
+
+    static <T> List<T> applyLimit(List<T> values, long limit) {
+        E.checkArgument(limit >= -1L,
+                        "The limit must be -1 or a non-negative number");
+        if (limit >= 0L && values.size() > limit) {
+            return new ArrayList<>(values.subList(0, (int) limit));
         }
-        return groups;
+        return values;
     }
 
     @GET
@@ -139,7 +140,7 @@ public class GraphSpaceGroupAPI extends API {
                       @PathParam("id") String id) {
         LOG.debug("GraphSpace [{}] get scoped group", graphSpace);
         ensureManager(manager, graphSpace);
-        HugeGroup group = getGroup(manager, id);
+        HugeGroup group = getGroup(manager.authManager(), id);
         checkScopedGroup(graphSpace, group);
         return manager.serializer().writeAuthElement(group);
     }
@@ -154,9 +155,9 @@ public class GraphSpaceGroupAPI extends API {
                        @PathParam("id") String id) {
         LOG.debug("GraphSpace [{}] delete scoped group", graphSpace);
         ensureManager(manager, graphSpace);
-        HugeGroup group = getGroup(manager, id);
+        HugeGroup group = getGroup(manager.authManager(), id);
         checkScopedGroup(graphSpace, group);
-        manager.authManager().deleteGroup(group.id());
+        manager.authManager().deleteGroup(graphSpace, group.id());
     }
 
     static void checkManagerPermission(AuthManager authManager,
@@ -185,10 +186,7 @@ public class GraphSpaceGroupAPI extends API {
     }
 
     static String scopedPrefix(String graphSpace) {
-        String encoded = Base64.getUrlEncoder().withoutPadding()
-                               .encodeToString(graphSpace.getBytes(
-                                       StandardCharsets.UTF_8));
-        return SCOPED_PREFIX + encoded + ":";
+        return StandardAuthManagerV2.scopedGroupPrefix(graphSpace);
     }
 
     static void ensureManager(GraphManager manager, String graphSpace) {
@@ -241,23 +239,20 @@ public class GraphSpaceGroupAPI extends API {
         }
     }
 
-    private static HugeGroup getGroup(GraphManager manager, String id) {
+    static HugeGroup getGroup(AuthManager authManager, String id) {
+        HugeGroup group;
         try {
-            return manager.authManager().getGroup(UserAPI.parseId(id));
+            group = authManager.getGroup(UserAPI.parseId(id));
         } catch (NotFoundException e) {
             throw new IllegalArgumentException("Invalid group id: " + id);
         }
+        E.checkArgument(group != null, "Invalid group id: %s", id);
+        return group;
     }
 
     private static boolean isScopedGroup(String graphSpace,
                                          HugeGroup group) {
-        if (group == null || group.name() == null) {
-            return false;
-        }
-        String prefix = scopedPrefix(graphSpace);
-        String name = group.name();
-        return name.startsWith(prefix) &&
-               name.substring(prefix.length()).matches("[0-9a-f]{32}");
+        return StandardAuthManagerV2.isScopedGroup(graphSpace, group);
     }
 
     @JsonIgnoreProperties(value = {"id", "group_creator",

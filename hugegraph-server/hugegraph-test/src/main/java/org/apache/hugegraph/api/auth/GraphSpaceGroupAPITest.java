@@ -125,6 +125,16 @@ public class GraphSpaceGroupAPITest {
         });
     }
 
+    @Test
+    public void testGetGroupRejectsMissingV2Result() {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+        Mockito.when(auth.getGroup(Mockito.any())).thenReturn(null);
+
+        Assert.assertThrows(IllegalArgumentException.class, () -> {
+            GraphSpaceGroupAPI.getGroup(auth, "missing");
+        });
+    }
+
     private static HugeGroup group(String graphSpace, char suffix) {
         return new HugeGroup(GraphSpaceGroupAPI.scopedPrefix(graphSpace) +
                              repeat(suffix, 32));

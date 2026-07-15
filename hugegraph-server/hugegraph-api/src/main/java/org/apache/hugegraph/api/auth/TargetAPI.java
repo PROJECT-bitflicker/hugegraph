@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.api.filter.StatusFilter.Status;
+import org.apache.hugegraph.auth.AuthManager;
 import org.apache.hugegraph.auth.HugeTarget;
 import org.apache.hugegraph.core.GraphManager;
 import org.apache.hugegraph.define.Checkable;
@@ -116,14 +117,20 @@ public class TargetAPI extends API {
         LOG.debug("GraphSpace [{}] list targets", graphSpace);
         GraphSpaceGroupAPI.ensureAuthManager(manager, graphSpace);
 
-        List<HugeTarget> targets = manager.authManager()
-                                                  .listAllTargets(graphSpace,
-                                                                  limit);
+        List<HugeTarget> targets = listScopedTargets(manager.authManager(),
+                                                     graphSpace, limit);
+        return manager.serializer().writeAuthElements("targets", targets);
+    }
+
+    static List<HugeTarget> listScopedTargets(AuthManager authManager,
+                                               String graphSpace,
+                                               long limit) {
+        List<HugeTarget> targets = authManager.listAllTargets(graphSpace, -1L);
         targets = targets.stream()
                          .filter(target -> graphSpace.equals(
                                  target.graphSpace()))
                          .collect(Collectors.toList());
-        return manager.serializer().writeAuthElements("targets", targets);
+        return GraphSpaceGroupAPI.applyLimit(targets, limit);
     }
 
     @GET
@@ -168,6 +175,7 @@ public class TargetAPI extends API {
     }
 
     static void checkGraphSpace(String graphSpace, HugeTarget target) {
+        E.checkArgumentNotNull(target, "The target can't be null");
         if (!graphSpace.equals(target.graphSpace())) {
             throw new jakarta.ws.rs.ForbiddenException(
                     "Permission denied: target belongs to another graphspace");
@@ -185,7 +193,7 @@ public class TargetAPI extends API {
         @Schema(description = "The target graph name", required = true)
         private String graph;
         @JsonProperty("target_url")
-        @Schema(description = "The target URL", required = true)
+        @Schema(description = "The target URL")
         private String url;
         @JsonProperty("target_description")
         @Schema(description = "The target description")

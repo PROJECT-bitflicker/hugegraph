@@ -18,9 +18,11 @@
 package org.apache.hugegraph.auth;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -66,6 +68,7 @@ public class StandardAuthManagerV2 implements AuthManager {
     private static final long AUTH_TOKEN_EXPIRE = 3600 * 24L;
     private static final String DEFAULT_ADMIN_ROLE_KEY = "DEFAULT_ADMIN_ROLE";
     private static final String DEFAULT_ADMIN_TARGET_KEY = "DEFAULT_ADMIN_TARGET";
+    private static final String SCOPED_GROUP_PREFIX = "~hubble_role:v1:";
     // Cache <username, HugeUser>
     private final Cache<Id, HugeUser> usersCache;
     // Cache <userId, passwd>
@@ -78,6 +81,64 @@ public class StandardAuthManagerV2 implements AuthManager {
     private Boolean ipWhiteListEnabled;
     private final MetaManager metaManager = MetaManager.instance();
     private final String graphSpace;
+
+    static void checkGraphSpace(String graphSpace, String entityGraphSpace) {
+        E.checkArgument(graphSpace != null &&
+                        graphSpace.equals(entityGraphSpace),
+                        "The entity graphspace '%s' does not match '%s'",
+                        entityGraphSpace, graphSpace);
+    }
+
+    public static String scopedGroupPrefix(String graphSpace) {
+        String encoded = Base64.getUrlEncoder().withoutPadding()
+                               .encodeToString(graphSpace.getBytes(
+                                       StandardCharsets.UTF_8));
+        return SCOPED_GROUP_PREFIX + encoded + ":";
+    }
+
+    public static boolean isScopedGroup(String graphSpace, HugeGroup group) {
+        if (group == null || group.name() == null) {
+            return false;
+        }
+        String prefix = scopedGroupPrefix(graphSpace);
+        String name = group.name();
+        return name.startsWith(prefix) &&
+               name.substring(prefix.length()).matches("[0-9a-f]{32}");
+    }
+
+    static void checkScopedGroup(String graphSpace, HugeGroup group) {
+        E.checkArgument(isScopedGroup(graphSpace, group),
+                        "The group does not belong to graphspace '%s'",
+                        graphSpace);
+    }
+
+    static void deleteGroupRelations(AuthManager authManager,
+                                     String graphSpace, Id group) {
+        Set<Id> belongs = new HashSet<>();
+        for (HugeBelong belong : authManager.listBelongByUser(
+                                  graphSpace, group, -1L)) {
+            if (HugeBelong.GR.equals(belong.link()) &&
+                group.equals(belong.source())) {
+                belongs.add(belong.id());
+            }
+        }
+        for (HugeBelong belong : authManager.listBelongByGroup(
+                                  graphSpace, group, -1L)) {
+            if (HugeBelong.UG.equals(belong.link()) &&
+                group.equals(belong.target())) {
+                belongs.add(belong.id());
+            }
+        }
+        for (Id belong : belongs) {
+            authManager.deleteBelong(graphSpace, belong);
+        }
+        for (HugeAccess access : authManager.listAccessByGroup(
+                                 graphSpace, group, -1L)) {
+            if (group.equals(access.source())) {
+                authManager.deleteAccess(graphSpace, access.id());
+            }
+        }
+    }
 
     public StandardAuthManagerV2(HugeGraphParams graph) {
         E.checkNotNull(graph, "graph");
@@ -254,7 +315,7 @@ public class StandardAuthManagerV2 implements AuthManager {
                                                                HugeBelong.ALL,
                                                                -1);
             for (HugeBelong belong : belongs) {
-                this.deleteBelong(belong.id());
+                this.deleteBelong(space, belong.id());
             }
         }
 
@@ -418,6 +479,24 @@ public class StandardAuthManagerV2 implements AuthManager {
     }
 
     @Override
+    public HugeGroup deleteGroup(String graphSpace, Id id) {
+        HugeGroup group = this.getGroup(id);
+        checkScopedGroup(graphSpace, group);
+        deleteGroupRelations(this, graphSpace, id);
+        try {
+            HugeGroup result = this.metaManager.deleteGroup(id);
+            this.invalidateUserCache();
+            return result;
+        } catch (IOException e) {
+            throw new HugeException("IOException occurs when " +
+                                    "deserialize group", e);
+        } catch (ClassNotFoundException e) {
+            throw new HugeException("ClassNotFoundException occurs when " +
+                                    "deserialize group", e);
+        }
+    }
+
+    @Override
     public HugeGroup getGroup(Id id) {
         try {
             HugeGroup result = this.metaManager.findGroup(id.asString());
@@ -467,6 +546,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createTarget(String graphSpace, HugeTarget target) {
+        checkGraphSpace(graphSpace, target.graphSpace());
         try {
             target.create(target.update());
             updateCreator(target);
@@ -486,6 +566,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateTarget(String graphSpace, HugeTarget target) {
+        checkGraphSpace(graphSpace, target.graphSpace());
         try {
             HugeTarget result = this.metaManager.updateTarget(graphSpace, target);
             this.invalidateUserCache();
@@ -577,6 +658,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createBelong(String graphSpace, HugeBelong belong) {
+        checkGraphSpace(graphSpace, belong.graphSpace());
         try {
             belong.create(belong.update());
             updateCreator(belong);
@@ -598,6 +680,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateBelong(String graphSpace, HugeBelong belong) {
+        checkGraphSpace(graphSpace, belong.graphSpace());
         try {
             HugeBelong result = this.metaManager.updateBelong(graphSpace, belong);
             this.invalidateUserCache();
@@ -727,6 +810,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id createAccess(String graphSpace, HugeAccess access) {
+        checkGraphSpace(graphSpace, access.graphSpace());
         try {
             access.create(access.update());
             updateCreator(access);
@@ -749,6 +833,7 @@ public class StandardAuthManagerV2 implements AuthManager {
 
     @Override
     public Id updateAccess(String graphSpace, HugeAccess access) {
+        checkGraphSpace(graphSpace, access.graphSpace());
         HugeAccess result = null;
         try {
             result = this.metaManager.updateAccess(graphSpace, access);
@@ -1569,6 +1654,7 @@ public class StandardAuthManagerV2 implements AuthManager {
             if (target == null) {
                 target = new HugeTarget(DEFAULT_ADMIN_TARGET_KEY,
                                         ALL_GRAPH_SPACES, ALL_GRAPHS);
+                target.graphSpace(ALL_GRAPH_SPACES);
                 this.updateCreator(target);
                 target.create(target.update());
                 this.metaManager.createTarget(ALL_GRAPH_SPACES, target);

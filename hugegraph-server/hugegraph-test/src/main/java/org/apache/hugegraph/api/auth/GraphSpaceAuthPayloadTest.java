@@ -17,6 +17,8 @@
 
 package org.apache.hugegraph.api.auth;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.hugegraph.auth.AuthManager;
@@ -131,5 +133,71 @@ public class GraphSpaceAuthPayloadTest {
         BelongAPI.checkGraphSpace("SPACE_A", belong);
         Assert.assertThrows(ForbiddenException.class, () ->
                 BelongAPI.checkGraphSpace("SPACE_B", belong));
+    }
+
+    @Test
+    public void testScopedChecksRejectMissingEntities() {
+        Assert.assertThrows(IllegalArgumentException.class, () ->
+                TargetAPI.checkGraphSpace("SPACE_A", null));
+        Assert.assertThrows(IllegalArgumentException.class, () ->
+                BelongAPI.checkGraphSpace("SPACE_A", null));
+        Assert.assertThrows(IllegalArgumentException.class, () ->
+                AccessAPI.checkGraphSpace("SPACE_A", null));
+    }
+
+    @Test
+    public void testScopedListsFilterBeforeApplyingLimit() {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+        HugeTarget foreignTarget = target("SPACE_B", "foreign");
+        HugeTarget ownTarget1 = target("SPACE_A", "own-1");
+        HugeTarget ownTarget2 = target("SPACE_A", "own-2");
+        Mockito.when(auth.listAllTargets("SPACE_A", -1L)).thenReturn(
+                Arrays.asList(foreignTarget, ownTarget1, ownTarget2));
+
+        HugeBelong foreignBelong = belong("SPACE_B", "foreign");
+        HugeBelong ownBelong1 = belong("SPACE_A", "own-1");
+        HugeBelong ownBelong2 = belong("SPACE_A", "own-2");
+        Mockito.when(auth.listAllBelong("SPACE_A", -1L)).thenReturn(
+                Arrays.asList(foreignBelong, ownBelong1, ownBelong2));
+
+        HugeAccess foreignAccess = access("SPACE_B", "foreign");
+        HugeAccess ownAccess1 = access("SPACE_A", "own-1");
+        HugeAccess ownAccess2 = access("SPACE_A", "own-2");
+        Mockito.when(auth.listAllAccess("SPACE_A", -1L)).thenReturn(
+                Arrays.asList(foreignAccess, ownAccess1, ownAccess2));
+
+        List<HugeTarget> targets = TargetAPI.listScopedTargets(
+                                   auth, "SPACE_A", 1L);
+        List<HugeBelong> belongs = BelongAPI.listScopedBelongs(
+                                   auth, "SPACE_A", null, null, 1L);
+        List<HugeAccess> accesses = AccessAPI.listScopedAccesses(
+                                   auth, "SPACE_A", null, null, 1L);
+
+        Assert.assertEquals(Arrays.asList(ownTarget1), targets);
+        Assert.assertEquals(Arrays.asList(ownBelong1), belongs);
+        Assert.assertEquals(Arrays.asList(ownAccess1), accesses);
+    }
+
+    private static HugeTarget target(String graphSpace, String name) {
+        HugeTarget target = new HugeTarget(name, "hugegraph", "");
+        target.graphSpace(graphSpace);
+        target.creator("admin");
+        return target;
+    }
+
+    private static HugeBelong belong(String graphSpace, String suffix) {
+        HugeBelong belong = new HugeBelong(
+                graphSpace, IdGenerator.of("user-" + suffix),
+                IdGenerator.of("group-" + suffix), null, HugeBelong.UG);
+        belong.creator("admin");
+        return belong;
+    }
+
+    private static HugeAccess access(String graphSpace, String suffix) {
+        HugeAccess access = new HugeAccess(
+                graphSpace, IdGenerator.of("group-" + suffix),
+                IdGenerator.of("target-" + suffix));
+        access.creator("admin");
+        return access;
     }
 }

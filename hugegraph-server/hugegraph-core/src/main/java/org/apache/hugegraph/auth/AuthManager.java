@@ -53,6 +53,11 @@ public interface AuthManager {
 
     HugeGroup deleteGroup(Id id);
 
+    default HugeGroup deleteGroup(String graphSpace, Id id) {
+        throw new UnsupportedOperationException(
+                "Scoped group deletion is not supported");
+    }
+
     HugeGroup getGroup(Id id);
 
     List<HugeGroup> listGroups(List<Id> ids);

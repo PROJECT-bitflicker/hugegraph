@@ -145,23 +145,31 @@ public class AccessAPI extends API {
         E.checkArgument(group == null || target == null,
                         "Can't pass both group and target at the same time");
 
-        List<HugeAccess> belongs;
+        Id groupId = group == null ? null : UserAPI.parseId(group);
+        Id targetId = target == null ? null : UserAPI.parseId(target);
+        List<HugeAccess> accesses = listScopedAccesses(manager.authManager(),
+                                                       graphSpace, groupId,
+                                                       targetId, limit);
+        return manager.serializer().writeAuthElements("accesses", accesses);
+    }
+
+    static List<HugeAccess> listScopedAccesses(AuthManager authManager,
+                                                String graphSpace, Id group,
+                                                Id target, long limit) {
+        List<HugeAccess> accesses;
         if (group != null) {
-            Id id = UserAPI.parseId(group);
-            belongs = manager.authManager().listAccessByGroup(graphSpace, id,
-                                                              limit);
+            accesses = authManager.listAccessByGroup(graphSpace, group, -1L);
         } else if (target != null) {
-            Id id = UserAPI.parseId(target);
-            belongs = manager.authManager().listAccessByTarget(graphSpace, id,
-                                                               limit);
+            accesses = authManager.listAccessByTarget(graphSpace, target,
+                                                       -1L);
         } else {
-            belongs = manager.authManager().listAllAccess(graphSpace, limit);
+            accesses = authManager.listAllAccess(graphSpace, -1L);
         }
-        belongs = belongs.stream()
-                         .filter(access -> graphSpace.equals(
-                                 access.graphSpace()))
-                         .collect(Collectors.toList());
-        return manager.serializer().writeAuthElements("accesses", belongs);
+        accesses = accesses.stream()
+                           .filter(access -> graphSpace.equals(
+                                   access.graphSpace()))
+                           .collect(Collectors.toList());
+        return GraphSpaceGroupAPI.applyLimit(accesses, limit);
     }
 
     @GET
@@ -206,6 +214,7 @@ public class AccessAPI extends API {
     }
 
     static void checkGraphSpace(String graphSpace, HugeAccess access) {
+        E.checkArgumentNotNull(access, "The access can't be null");
         if (!graphSpace.equals(access.graphSpace())) {
             throw new jakarta.ws.rs.ForbiddenException(
                     "Permission denied: access belongs to another graphspace");

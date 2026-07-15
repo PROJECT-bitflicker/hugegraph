@@ -242,6 +242,12 @@ public class StandardAuthManager implements AuthManager {
     }
 
     @Override
+    public HugeGroup deleteGroup(String graphSpace, Id id) {
+        this.checkGraphSpace(graphSpace);
+        return this.deleteGroup(id);
+    }
+
+    @Override
     public HugeGroup getGroup(Id id) {
         return this.groups.get(id);
     }

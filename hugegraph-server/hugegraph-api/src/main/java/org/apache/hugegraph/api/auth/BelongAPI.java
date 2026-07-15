@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.api.filter.StatusFilter.Status;
+import org.apache.hugegraph.auth.AuthManager;
 import org.apache.hugegraph.auth.HugeBelong;
 import org.apache.hugegraph.backend.id.Id;
 import org.apache.hugegraph.core.GraphManager;
@@ -126,23 +127,30 @@ public class BelongAPI extends API {
         E.checkArgument(user == null || group == null,
                         "Can't pass both user and group at the same time");
 
+        Id userId = user == null ? null : UserAPI.parseId(user);
+        Id groupId = group == null ? null : UserAPI.parseId(group);
+        List<HugeBelong> belongs = listScopedBelongs(manager.authManager(),
+                                                     graphSpace, userId,
+                                                     groupId, limit);
+        return manager.serializer().writeAuthElements("belongs", belongs);
+    }
+
+    static List<HugeBelong> listScopedBelongs(AuthManager authManager,
+                                               String graphSpace, Id user,
+                                               Id group, long limit) {
         List<HugeBelong> belongs;
         if (user != null) {
-            Id id = UserAPI.parseId(user);
-            belongs = manager.authManager().listBelongByUser(graphSpace, id,
-                                                             limit);
+            belongs = authManager.listBelongByUser(graphSpace, user, -1L);
         } else if (group != null) {
-            Id id = UserAPI.parseId(group);
-            belongs = manager.authManager().listBelongByGroup(graphSpace, id,
-                                                              limit);
+            belongs = authManager.listBelongByGroup(graphSpace, group, -1L);
         } else {
-            belongs = manager.authManager().listAllBelong(graphSpace, limit);
+            belongs = authManager.listAllBelong(graphSpace, -1L);
         }
         belongs = belongs.stream()
                          .filter(belong -> graphSpace.equals(
                                  belong.graphSpace()))
                          .collect(Collectors.toList());
-        return manager.serializer().writeAuthElements("belongs", belongs);
+        return GraphSpaceGroupAPI.applyLimit(belongs, limit);
     }
 
     @GET
@@ -187,6 +195,7 @@ public class BelongAPI extends API {
     }
 
     static void checkGraphSpace(String graphSpace, HugeBelong belong) {
+        E.checkArgumentNotNull(belong, "The belong can't be null");
         if (!graphSpace.equals(belong.graphSpace())) {
             throw new jakarta.ws.rs.ForbiddenException(
                     "Permission denied: belong belongs to another graphspace");
