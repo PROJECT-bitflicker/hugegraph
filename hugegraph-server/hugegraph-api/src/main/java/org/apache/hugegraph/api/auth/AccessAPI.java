@@ -22,8 +22,10 @@ import java.util.stream.Collectors;
 
 import org.apache.hugegraph.api.API;
 import org.apache.hugegraph.api.filter.StatusFilter.Status;
+import org.apache.hugegraph.auth.AuthManager;
 import org.apache.hugegraph.auth.HugeAccess;
 import org.apache.hugegraph.auth.HugePermission;
+import org.apache.hugegraph.auth.HugeTarget;
 import org.apache.hugegraph.backend.id.Id;
 import org.apache.hugegraph.core.GraphManager;
 import org.apache.hugegraph.define.Checkable;
@@ -73,10 +75,26 @@ public class AccessAPI extends API {
         checkCreatingBody(jsonAccess);
 
         HugeAccess access = jsonAccess.build(graphSpace);
-        GraphSpaceGroupAPI.checkScopedGroupReference(
-                manager.authManager(), graphSpace, access.source());
-        access.id(manager.authManager().createAccess(graphSpace, access));
+        access.id(createScopedAccess(manager.authManager(), graphSpace,
+                                     access));
         return manager.serializer().writeAuthElement(access);
+    }
+
+    static Id createScopedAccess(AuthManager authManager, String graphSpace,
+                                 HugeAccess access) {
+        GraphSpaceGroupAPI.checkScopedGroupReference(
+                authManager, graphSpace, access.source());
+        HugeTarget target;
+        try {
+            target = authManager.getTarget(graphSpace, access.target());
+        } catch (NotFoundException e) {
+            throw new IllegalArgumentException(
+                    "Invalid target id: " + access.target());
+        }
+        E.checkArgument(target != null, "Invalid target id: %s",
+                        access.target());
+        TargetAPI.checkGraphSpace(graphSpace, target);
+        return authManager.createAccess(graphSpace, access);
     }
 
     @PUT

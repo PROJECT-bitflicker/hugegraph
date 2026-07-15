@@ -19,6 +19,7 @@ package org.apache.hugegraph.api.auth;
 
 import java.util.Map;
 
+import org.apache.hugegraph.auth.AuthManager;
 import org.apache.hugegraph.auth.HugeAccess;
 import org.apache.hugegraph.auth.HugeBelong;
 import org.apache.hugegraph.auth.HugePermission;
@@ -26,6 +27,7 @@ import org.apache.hugegraph.auth.HugeTarget;
 import org.apache.hugegraph.backend.id.IdGenerator;
 import org.apache.hugegraph.testutil.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.ForbiddenException;
@@ -94,6 +96,29 @@ public class GraphSpaceAuthPayloadTest {
         AccessAPI.checkGraphSpace("SPACE_A", access);
         Assert.assertThrows(ForbiddenException.class, () ->
                 AccessAPI.checkGraphSpace("SPACE_B", access));
+    }
+
+    @Test
+    public void testCreateAccessRejectsForeignTargetWithoutSideEffects()
+            throws Exception {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+        AccessAPI.JsonAccess jsonAccess = new ObjectMapper().readValue(
+                "{\"group\":\"group\",\"target\":\"target\"," +
+                "\"access_permission\":\"READ\"}",
+                AccessAPI.JsonAccess.class);
+        HugeAccess access = jsonAccess.build("SPACE_A");
+        HugeTarget target = new HugeTarget("target", "hugegraph", "");
+        target.graphSpace("SPACE_B");
+        Mockito.when(auth.getTarget("SPACE_A", access.target()))
+               .thenReturn(target);
+
+        Assert.assertThrows(ForbiddenException.class, () ->
+                AccessAPI.createScopedAccess(auth, "SPACE_A", access));
+
+        Mockito.verify(auth).getTarget("SPACE_A", access.target());
+        Mockito.verify(auth, Mockito.never())
+               .createAccess(Mockito.anyString(),
+                             Mockito.any(HugeAccess.class));
     }
 
     @Test
