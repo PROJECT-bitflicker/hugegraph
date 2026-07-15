@@ -294,10 +294,14 @@ public class HugeTarget extends Entity {
         }
     }
 
-    public static final class Schema extends SchemaDefine {
+    public static class Schema extends SchemaDefine {
 
         public Schema(HugeGraphParams graph) {
-            super(graph, P.TARGET);
+            this(graph, P.TARGET);
+        }
+
+        protected Schema(HugeGraphParams graph, String label) {
+            super(graph, label);
         }
 
         @Override

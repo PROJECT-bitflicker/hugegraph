@@ -40,7 +40,6 @@ import org.apache.hugegraph.auth.HugeResource;
 import org.apache.hugegraph.auth.HugeTarget;
 import org.apache.hugegraph.auth.HugeUser;
 import org.apache.hugegraph.auth.RolePermission;
-import org.apache.hugegraph.auth.SchemaDefine;
 import org.apache.hugegraph.auth.StandardAuthManager;
 import org.apache.hugegraph.auth.UserWithRole;
 import org.apache.hugegraph.backend.cache.Cache;
@@ -579,17 +578,17 @@ public class AuthTest extends BaseCoreTest {
     @Test
     public void testTargetSchemaUpgradeAddsNullableScopedProperties() {
         LegacyTargetSchema schema = new LegacyTargetSchema(params());
-        schema.initSchemaIfNeeded();
-        VertexLabel legacy = graph().vertexLabel(HugeTarget.P.TARGET);
+        schema.initLegacySchema();
+        VertexLabel legacy = graph().vertexLabel(LegacyTargetSchema.LABEL);
         List<String> legacyProperties = graph().mapPkId2Name(
                                         legacy.properties());
         Assert.assertFalse(legacyProperties.contains(HugeTarget.P.GRAPHSPACE));
         Assert.assertFalse(legacyProperties.contains(
                 HugeTarget.P.DESCRIPTION));
 
-        HugeTarget.schema(params()).initSchemaIfNeeded();
+        schema.initSchemaIfNeeded();
 
-        VertexLabel upgraded = graph().vertexLabel(HugeTarget.P.TARGET);
+        VertexLabel upgraded = graph().vertexLabel(LegacyTargetSchema.LABEL);
         Id graphSpace = graph().propertyKey(HugeTarget.P.GRAPHSPACE).id();
         Id description = graph().propertyKey(HugeTarget.P.DESCRIPTION).id();
         Assert.assertTrue(upgraded.properties().contains(graphSpace));
@@ -722,14 +721,16 @@ public class AuthTest extends BaseCoreTest {
         Assert.assertNotNull(authManager.getTarget(id));
     }
 
-    private static final class LegacyTargetSchema extends SchemaDefine {
+    private static final class LegacyTargetSchema extends HugeTarget.Schema {
+
+        private static final String LABEL = HugeTarget.P.TARGET +
+                                            "_upgrade_test";
 
         private LegacyTargetSchema(HugeGraphParams graph) {
-            super(graph, HugeTarget.P.TARGET);
+            super(graph, LABEL);
         }
 
-        @Override
-        public void initSchemaIfNeeded() {
+        private void initLegacySchema() {
             List<String> properties = new ArrayList<>();
             properties.add(createPropertyKey(HugeTarget.P.NAME));
             properties.add(createPropertyKey(HugeTarget.P.GRAPH));
@@ -738,7 +739,7 @@ public class AuthTest extends BaseCoreTest {
             String[] all = super.initProperties(properties);
 
             VertexLabel label = this.schema()
-                                    .vertexLabel(HugeTarget.P.TARGET)
+                                    .vertexLabel(LABEL)
                                     .properties(all)
                                     .usePrimaryKeyId()
                                     .primaryKeys(HugeTarget.P.NAME)
