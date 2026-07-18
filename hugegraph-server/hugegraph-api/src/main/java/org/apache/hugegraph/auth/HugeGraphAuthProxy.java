@@ -1872,7 +1872,7 @@ public final class HugeGraphAuthProxy implements HugeGraph {
                     return this.authManager.validateUser(token);
                 });
             } catch (Exception e) {
-                LOG.error("Failed to validate token {} with error: ", token, e);
+                LOG.error("Failed to validate token with error: ", e);
                 throw e;
             } finally {
                 setContext(context);

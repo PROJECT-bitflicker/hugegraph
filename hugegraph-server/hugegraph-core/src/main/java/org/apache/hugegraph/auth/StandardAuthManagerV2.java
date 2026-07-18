@@ -107,6 +107,7 @@ public class StandardAuthManagerV2 implements AuthManager {
     }
 
     static void checkScopedGroup(String graphSpace, HugeGroup group) {
+        E.checkArgument(group != null, "The group does not exist");
         E.checkArgument(isScopedGroup(graphSpace, group),
                         "The group does not belong to graphspace '%s'",
                         graphSpace);
@@ -1339,7 +1340,7 @@ public class StandardAuthManagerV2 implements AuthManager {
             try {
                 payload = this.tokenGenerator.verify(token);
             } catch (Throwable t) {
-                LOG.error(String.format("Failed to verify token:[ %s ], cause:", token), t);
+                LOG.error("Failed to verify token", t);
                 return new UserWithRole("");
             }
             username = (String) payload.get(AuthConstant.TOKEN_USER_NAME);

@@ -854,7 +854,7 @@ public class StandardAuthManager implements AuthManager {
             try {
                 payload = this.tokenGenerator.verify(token);
             } catch (Throwable t) {
-                LOG.error(String.format("Failed to verify token:[ %s ], cause:", token), t);
+                LOG.error("Failed to verify token", t);
                 return new UserWithRole("");
             }
             username = (String) payload.get(AuthConstant.TOKEN_USER_NAME);

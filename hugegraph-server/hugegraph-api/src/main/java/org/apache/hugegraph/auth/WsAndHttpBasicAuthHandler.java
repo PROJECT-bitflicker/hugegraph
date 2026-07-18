@@ -31,9 +31,11 @@ import java.util.Map;
 
 import org.apache.tinkerpop.gremlin.server.Settings;
 import org.apache.tinkerpop.gremlin.server.auth.AuthenticationException;
+import org.apache.tinkerpop.gremlin.server.auth.AuthenticatedUser;
 import org.apache.tinkerpop.gremlin.server.auth.Authenticator;
 import org.apache.tinkerpop.gremlin.server.handler.AbstractAuthenticationHandler;
 import org.apache.tinkerpop.gremlin.server.handler.SaslAuthenticationHandler;
+import org.apache.tinkerpop.gremlin.server.handler.StateKey;
 
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
@@ -132,7 +134,9 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
                 credentials.put(HugeAuthenticator.KEY_ADDRESS, address);
 
                 try {
-                    this.authenticator.authenticate(credentials);
+                    AuthenticatedUser user =
+                            this.authenticator.authenticate(credentials);
+                    ctx.channel().attr(StateKey.AUTHENTICATED_USER).set(user);
                     ctx.fireChannelRead(request);
                 } catch (AuthenticationException ae) {
                     sendError(ctx, msg);

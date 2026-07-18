@@ -26,6 +26,7 @@ import org.apache.hugegraph.meta.EtcdMetaDriverTest;
 import org.apache.hugegraph.meta.MetaManagerSchemaCacheClearEventTest;
 import org.apache.hugegraph.meta.managers.AuthMetaManagerTest;
 import org.apache.hugegraph.traversal.optimize.TraversalUtilOptimizeTest;
+import org.apache.hugegraph.unit.api.auth.LoginAPITest;
 import org.apache.hugegraph.unit.api.filter.LoadDetectFilterTest;
 import org.apache.hugegraph.unit.api.filter.PathFilterTest;
 import org.apache.hugegraph.unit.api.gremlin.GremlinQueryAPITest;
@@ -97,6 +98,7 @@ import org.junit.runners.Suite;
 @Suite.SuiteClasses({
         /* api filter */
         LoadDetectFilterTest.class,
+        LoginAPITest.class,
         PathFilterTest.class,
 
         /* api gremlin */

@@ -45,9 +45,12 @@ public class StandardAuthManagerV2Test {
         Assert.assertThrows(IllegalArgumentException.class, () -> {
             StandardAuthManagerV2.checkScopedGroup("SPACE_A", foreign);
         });
-        Assert.assertThrows(IllegalArgumentException.class, () -> {
+        try {
             StandardAuthManagerV2.checkScopedGroup("SPACE_A", null);
-        });
+            Assert.fail("Expected a missing-group error");
+        } catch (IllegalArgumentException e) {
+            Assert.assertContains("does not exist", e.getMessage());
+        }
     }
 
     @Test

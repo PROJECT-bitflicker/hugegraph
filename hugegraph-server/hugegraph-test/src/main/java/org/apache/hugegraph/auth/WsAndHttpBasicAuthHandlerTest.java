@@ -29,6 +29,7 @@ import java.util.Map;
 import org.apache.tinkerpop.gremlin.server.Settings;
 import org.apache.tinkerpop.gremlin.server.auth.AuthenticatedUser;
 import org.apache.tinkerpop.gremlin.server.auth.Authenticator;
+import org.apache.tinkerpop.gremlin.server.handler.StateKey;
 import org.apache.hugegraph.testutil.Assert;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,8 +46,9 @@ public class WsAndHttpBasicAuthHandlerTest {
     public void testBearerTokenAuthenticatesHttpGremlinRequest()
             throws Exception {
         Authenticator authenticator = Mockito.mock(Authenticator.class);
+        AuthenticatedUser user = new AuthenticatedUser("admin");
         Mockito.when(authenticator.authenticate(Mockito.anyMap()))
-               .thenReturn(new AuthenticatedUser("admin"));
+               .thenReturn(user);
         WsAndHttpBasicAuthHandler handler =
                 new WsAndHttpBasicAuthHandler(authenticator, new Settings());
         EmbeddedChannel channel = new EmbeddedChannel();
@@ -68,6 +70,8 @@ public class WsAndHttpBasicAuthHandlerTest {
                 credentials.getValue().containsKey("username"));
         Assert.assertFalse(
                 credentials.getValue().containsKey("password"));
+        Assert.assertSame(user,
+                          channel.attr(StateKey.AUTHENTICATED_USER).get());
         channel.finishAndReleaseAll();
     }
 
@@ -76,8 +80,9 @@ public class WsAndHttpBasicAuthHandlerTest {
     public void testBasicCredentialsStillAuthenticateHttpGremlinRequest()
             throws Exception {
         Authenticator authenticator = Mockito.mock(Authenticator.class);
+        AuthenticatedUser user = new AuthenticatedUser("admin");
         Mockito.when(authenticator.authenticate(Mockito.anyMap()))
-               .thenReturn(new AuthenticatedUser("admin"));
+               .thenReturn(user);
         EmbeddedChannel channel = channel(authenticator);
         String encoded = Base64.getEncoder().encodeToString(
                 "admin:password".getBytes(StandardCharsets.UTF_8));
@@ -91,6 +96,8 @@ public class WsAndHttpBasicAuthHandlerTest {
         Assert.assertEquals("password", credentials.getValue().get("password"));
         Assert.assertFalse(credentials.getValue().containsKey(
                 HugeAuthenticator.KEY_TOKEN));
+        Assert.assertSame(user,
+                          channel.attr(StateKey.AUTHENTICATED_USER).get());
         channel.finishAndReleaseAll();
     }
 
