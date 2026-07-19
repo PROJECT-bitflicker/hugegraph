@@ -206,17 +206,13 @@ public class SDConfigService {
         }
         if (stores != null) {
             stores.stream().forEach(e -> {
-                String buf = getRestAddress(e);
+                String buf = StoreRestAddressUtil.getRestAddress(e);
                 if (buf != null) {
                     res.add(buf);
                 }
             });
         }
         return res;
-    }
-
-    static String getRestAddress(Metapb.Store store) {
-        return StoreRestAddressUtil.getRestAddress(store);
     }
 
     public List<SDConfig> getConfigs(String appName, String path) {
