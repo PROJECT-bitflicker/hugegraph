@@ -165,6 +165,8 @@ public class StandardAuthManager implements AuthManager {
     }
 
     private void checkGraphSpace(String graphSpace) {
+        E.checkArgument(graphSpace != null,
+                        "The graph space can't be null");
         E.checkArgument(this.defaultGraphSpace.equals(graphSpace),
                         "The standalone auth manager only supports graph " +
                         "space '%s', but got '%s'",

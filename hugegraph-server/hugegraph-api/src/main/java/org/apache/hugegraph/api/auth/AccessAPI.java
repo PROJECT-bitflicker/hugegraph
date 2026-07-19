@@ -82,7 +82,7 @@ public class AccessAPI extends API {
 
     static Id createScopedAccess(AuthManager authManager, String graphSpace,
                                  HugeAccess access) {
-        GraphSpaceGroupAPI.checkScopedGroupReference(
+        GraphSpaceGroupAPI.requireScopedGroupReference(
                 authManager, graphSpace, access.source());
         HugeTarget target;
         try {
@@ -120,7 +120,7 @@ public class AccessAPI extends API {
             throw new IllegalArgumentException("Invalid access id: " + id);
         }
         checkGraphSpace(graphSpace, access);
-        GraphSpaceGroupAPI.checkScopedGroupReference(
+        GraphSpaceGroupAPI.requireScopedGroupReference(
                 manager.authManager(), graphSpace, access.source());
         access = jsonAccess.build(access);
         manager.authManager().updateAccess(graphSpace, access);
@@ -168,6 +168,10 @@ public class AccessAPI extends API {
         accesses = accesses.stream()
                            .filter(access -> graphSpace.equals(
                                    access.graphSpace()))
+                           .filter(access ->
+                                   GraphSpaceGroupAPI.isScopedGroupReference(
+                                           authManager, graphSpace,
+                                           access.source()))
                            .collect(Collectors.toList());
         return GraphSpaceGroupAPI.applyLimit(accesses, limit);
     }
@@ -187,6 +191,8 @@ public class AccessAPI extends API {
         HugeAccess access = manager.authManager().getAccess(
                 graphSpace, UserAPI.parseId(id));
         checkGraphSpace(graphSpace, access);
+        GraphSpaceGroupAPI.requireScopedGroupReference(
+                manager.authManager(), graphSpace, access.source());
         return manager.serializer().writeAuthElement(access);
     }
 
@@ -206,6 +212,8 @@ public class AccessAPI extends API {
             HugeAccess access = manager.authManager().getAccess(
                     graphSpace, UserAPI.parseId(id));
             checkGraphSpace(graphSpace, access);
+            GraphSpaceGroupAPI.requireScopedGroupReference(
+                    manager.authManager(), graphSpace, access.source());
             manager.authManager().deleteAccess(graphSpace,
                                                UserAPI.parseId(id));
         } catch (NotFoundException e) {

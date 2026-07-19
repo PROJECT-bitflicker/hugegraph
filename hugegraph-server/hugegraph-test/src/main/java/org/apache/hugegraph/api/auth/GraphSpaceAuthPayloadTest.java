@@ -24,6 +24,7 @@ import java.util.Map;
 import org.apache.hugegraph.auth.AuthManager;
 import org.apache.hugegraph.auth.HugeAccess;
 import org.apache.hugegraph.auth.HugeBelong;
+import org.apache.hugegraph.auth.HugeGroup;
 import org.apache.hugegraph.auth.HugePermission;
 import org.apache.hugegraph.auth.HugeTarget;
 import org.apache.hugegraph.backend.id.IdGenerator;
@@ -121,6 +122,44 @@ public class GraphSpaceAuthPayloadTest {
         Mockito.verify(auth, Mockito.never())
                .createAccess(Mockito.anyString(),
                              Mockito.any(HugeAccess.class));
+    }
+
+    @Test
+    public void testCreateAccessRejectsBuiltInRoleGroup() throws Exception {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+        Mockito.when(auth.supportsGraphSpaceAuth()).thenReturn(true);
+        AccessAPI.JsonAccess jsonAccess = new ObjectMapper().readValue(
+                "{\"group\":\"builtin\",\"target\":\"target\"," +
+                "\"access_permission\":\"READ\"}",
+                AccessAPI.JsonAccess.class);
+        HugeAccess access = jsonAccess.build("SPACE_A");
+        Mockito.when(auth.getGroup(access.source())).thenReturn(null);
+
+        Assert.assertThrows(ForbiddenException.class, () ->
+                AccessAPI.createScopedAccess(auth, "SPACE_A", access));
+
+        Mockito.verify(auth, Mockito.never())
+               .createAccess(Mockito.anyString(),
+                             Mockito.any(HugeAccess.class));
+    }
+
+    @Test
+    public void testAccessListHidesBuiltInRoleAccesses() {
+        AuthManager auth = Mockito.mock(AuthManager.class);
+        Mockito.when(auth.supportsGraphSpaceAuth()).thenReturn(true);
+        HugeAccess builtIn = access("SPACE_A", "builtin");
+        HugeAccess business = access("SPACE_A", "business");
+        Mockito.when(auth.listAllAccess("SPACE_A", -1L)).thenReturn(
+                Arrays.asList(builtIn, business));
+        Mockito.when(auth.getGroup(builtIn.source())).thenReturn(null);
+        Mockito.when(auth.getGroup(business.source())).thenReturn(
+                new HugeGroup(GraphSpaceGroupAPI.scopedPrefix("SPACE_A") +
+                              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+
+        List<HugeAccess> accesses = AccessAPI.listScopedAccesses(
+                                    auth, "SPACE_A", null, null, 100L);
+
+        Assert.assertEquals(Arrays.asList(business), accesses);
     }
 
     @Test

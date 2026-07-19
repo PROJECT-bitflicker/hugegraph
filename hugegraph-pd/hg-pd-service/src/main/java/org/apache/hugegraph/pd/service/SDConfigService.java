@@ -215,15 +215,8 @@ public class SDConfigService {
         return res;
     }
 
-    // Keep the legacy gRPC fallback when no valid REST port is registered.
-    private String getRestAddress(Metapb.Store store) {
-        String address = store.getAddress();
-        if (address == null || address.isEmpty()) {
-            return null;
-        }
-        String restAddress = StoreRestAddressUtil.getRestAddress(store);
-        return restAddress != null ? restAddress : address;
-
+    static String getRestAddress(Metapb.Store store) {
+        return StoreRestAddressUtil.getRestAddress(store);
     }
 
     public List<SDConfig> getConfigs(String appName, String path) {

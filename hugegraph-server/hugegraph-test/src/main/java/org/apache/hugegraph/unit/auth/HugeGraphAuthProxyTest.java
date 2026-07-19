@@ -257,6 +257,72 @@ public class HugeGraphAuthProxyTest extends BaseUnitTest {
     }
 
     @Test
+    public void testLogoutInvalidatesTokenRoleCache() throws Exception {
+        HugeGraph graph = Mockito.mock(HugeGraph.class);
+        HugeConfig config = Mockito.mock(HugeConfig.class);
+        AuthManager authManager = Mockito.mock(AuthManager.class);
+        TaskScheduler scheduler = Mockito.mock(TaskScheduler.class);
+        String token = "cached-token";
+
+        Mockito.when(graph.spaceGraphName()).thenReturn("hugegraph");
+        Mockito.when(graph.configuration()).thenReturn(config);
+        Mockito.when(graph.authManager()).thenReturn(authManager);
+        Mockito.when(graph.taskScheduler()).thenReturn(scheduler);
+        Mockito.when(config.get(AuthOptions.AUTH_CACHE_EXPIRE))
+               .thenReturn(3600L);
+        Mockito.when(config.get(AuthOptions.AUTH_CACHE_CAPACITY))
+               .thenReturn(100L);
+        Mockito.when(config.get(AuthOptions.AUTH_AUDIT_LOG_RATE))
+               .thenReturn(1000D);
+        Mockito.when(authManager.validateUser(token))
+               .thenReturn(new UserWithRole("cache_user"));
+
+        AuthManager proxyAuthManager =
+                new HugeGraphAuthProxy(graph).authManager();
+        proxyAuthManager.validateUser(token);
+        proxyAuthManager.validateUser(token);
+        Mockito.verify(authManager, Mockito.times(1)).validateUser(token);
+
+        proxyAuthManager.logoutUser(token);
+        proxyAuthManager.validateUser(token);
+
+        Mockito.verify(authManager).logoutUser(token);
+        Mockito.verify(authManager, Mockito.times(2)).validateUser(token);
+    }
+
+    @Test
+    public void testProxyOverridesEveryScopedDefaultMethod() throws Exception {
+        HugeGraph graph = Mockito.mock(HugeGraph.class);
+        HugeConfig config = Mockito.mock(HugeConfig.class);
+        AuthManager origin = Mockito.mock(AuthManager.class);
+        TaskScheduler scheduler = Mockito.mock(TaskScheduler.class);
+
+        Mockito.when(graph.spaceGraphName()).thenReturn("hugegraph");
+        Mockito.when(graph.configuration()).thenReturn(config);
+        Mockito.when(graph.authManager()).thenReturn(origin);
+        Mockito.when(graph.taskScheduler()).thenReturn(scheduler);
+        Mockito.when(config.get(AuthOptions.AUTH_CACHE_EXPIRE))
+               .thenReturn(3600L);
+        Mockito.when(config.get(AuthOptions.AUTH_CACHE_CAPACITY))
+               .thenReturn(100L);
+        Mockito.when(config.get(AuthOptions.AUTH_AUDIT_LOG_RATE))
+               .thenReturn(1000D);
+        Mockito.when(origin.supportsGraphSpaceAuth()).thenReturn(true);
+
+        AuthManager proxy = new HugeGraphAuthProxy(graph).authManager();
+        Assert.assertTrue(proxy.supportsGraphSpaceAuth());
+        for (Method method : AuthManager.class.getMethods()) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (!method.isDefault() || parameters.length == 0 ||
+                parameters[0] != String.class) {
+                continue;
+            }
+            Assert.assertNotNull(proxy.getClass().getDeclaredMethod(
+                                 method.getName(), parameters));
+        }
+    }
+
+    @Test
     public void testValidateUserDoesNotLogBearerToken() {
         String token = "secret-proxy-bearer-token";
         HugeGraph graph = Mockito.mock(HugeGraph.class);

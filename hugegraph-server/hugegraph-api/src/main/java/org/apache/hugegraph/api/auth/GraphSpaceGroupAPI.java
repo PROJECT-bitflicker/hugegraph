@@ -197,14 +197,16 @@ public class GraphSpaceGroupAPI extends API {
     static void ensureAuthManager(GraphManager manager, String graphSpace) {
         E.checkArgument(manager.graphSpace(graphSpace) != null,
                         "The graph space '%s' does not exist", graphSpace);
-        checkManagerPermission(manager.authManager(), graphSpace,
-                               HugeGraphAuthProxy.username());
+        if (manager.authManager().supportsGraphSpaceAuth()) {
+            checkManagerPermission(manager.authManager(), graphSpace,
+                                   HugeGraphAuthProxy.username());
+        }
     }
 
     static void checkBelongReferences(AuthManager authManager,
                                       String graphSpace,
                                       HugeBelong belong) {
-        if (!(authManager instanceof StandardAuthManagerV2)) {
+        if (!authManager.supportsGraphSpaceAuth()) {
             return;
         }
         HugeUser user = authManager.findUser(belong.source().asString());
@@ -225,7 +227,7 @@ public class GraphSpaceGroupAPI extends API {
 
     static void checkScopedGroupReference(AuthManager authManager,
                                           String graphSpace, Id groupId) {
-        if (!(authManager instanceof StandardAuthManagerV2)) {
+        if (!authManager.supportsGraphSpaceAuth()) {
             return;
         }
         HugeGroup group;
@@ -236,6 +238,35 @@ public class GraphSpaceGroupAPI extends API {
         }
         if (group != null) {
             checkScopedGroup(graphSpace, group);
+        }
+    }
+
+    static void requireScopedGroupReference(AuthManager authManager,
+                                            String graphSpace, Id groupId) {
+        if (!authManager.supportsGraphSpaceAuth()) {
+            return;
+        }
+        HugeGroup group;
+        try {
+            group = authManager.getGroup(groupId);
+        } catch (NotFoundException e) {
+            throw new ForbiddenException(
+                    "Permission denied: access group is not a business group");
+        }
+        if (group == null) {
+            throw new ForbiddenException(
+                    "Permission denied: access group is not a business group");
+        }
+        checkScopedGroup(graphSpace, group);
+    }
+
+    static boolean isScopedGroupReference(AuthManager authManager,
+                                          String graphSpace, Id groupId) {
+        try {
+            requireScopedGroupReference(authManager, graphSpace, groupId);
+            return true;
+        } catch (ForbiddenException e) {
+            return false;
         }
     }
 
@@ -260,7 +291,9 @@ public class GraphSpaceGroupAPI extends API {
     static class JsonGroup implements Checkable {
 
         @JsonProperty("group_name")
-        @Schema(description = "The name of group", required = true)
+        @Schema(description = "A required client label; the server generates " +
+                              "the persisted scoped group name",
+                required = true)
         private String name;
         @JsonProperty("group_description")
         @Schema(description = "The description of group")
@@ -287,7 +320,7 @@ public class GraphSpaceGroupAPI extends API {
         @Override
         public void checkCreate(boolean isBatch) {
             E.checkArgumentNotNull(this.name,
-                                   "The name of group can't be null");
+                                   "The group label can't be null");
         }
 
         @Override

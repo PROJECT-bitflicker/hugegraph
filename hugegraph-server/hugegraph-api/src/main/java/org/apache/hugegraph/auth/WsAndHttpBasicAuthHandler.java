@@ -55,9 +55,6 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
 
     private static final String AUTHENTICATOR = "authenticator";
     private static final String HTTP_AUTH = "http-authentication";
-    private static final String BASIC_AUTH_PREFIX = "Basic ";
-    private static final String BEARER_TOKEN_PREFIX = "Bearer ";
-
     public WsAndHttpBasicAuthHandler(Authenticator authenticator,
                                      Settings settings) {
         super(authenticator, settings);
@@ -109,18 +106,18 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
 
                 final String header = request.headers().get("Authorization");
                 final Map<String, String> credentials = new HashMap<>();
-                if (header.startsWith(BASIC_AUTH_PREFIX)) {
-                    if (!parseBasicCredentials(header, credentials)) {
+                int separator = header.indexOf(' ');
+                if (separator <= 0 || separator == header.length() - 1) {
+                    sendError(ctx, msg);
+                    return;
+                }
+                String scheme = header.substring(0, separator);
+                String payload = header.substring(separator + 1);
+                if ("Basic".equalsIgnoreCase(scheme)) {
+                    if (!parseBasicCredentials(payload, credentials)) {
                         sendError(ctx, msg);
                         return;
                     }
-                } else if (header.startsWith(BEARER_TOKEN_PREFIX)) {
-                    String token = header.substring(BEARER_TOKEN_PREFIX.length());
-                    if (token.isEmpty()) {
-                        sendError(ctx, msg);
-                        return;
-                    }
-                    credentials.put(HugeAuthenticator.KEY_TOKEN, token);
                 } else {
                     sendError(ctx, msg);
                     return;
@@ -144,11 +141,10 @@ public class WsAndHttpBasicAuthHandler extends SaslAuthenticationHandler {
             }
         }
 
-        private boolean parseBasicCredentials(String header,
+        private boolean parseBasicCredentials(String encoded,
                                               Map<String, String> credentials) {
             byte[] userPass;
             try {
-                String encoded = header.substring(BASIC_AUTH_PREFIX.length());
                 userPass = this.decoder.decode(encoded);
             } catch (IllegalArgumentException e) {
                 return false;

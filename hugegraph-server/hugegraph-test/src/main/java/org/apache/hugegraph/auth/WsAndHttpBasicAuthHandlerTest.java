@@ -43,40 +43,6 @@ public class WsAndHttpBasicAuthHandlerTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testBearerTokenAuthenticatesHttpGremlinRequest()
-            throws Exception {
-        Authenticator authenticator = Mockito.mock(Authenticator.class);
-        AuthenticatedUser user = new AuthenticatedUser("admin");
-        Mockito.when(authenticator.authenticate(Mockito.anyMap()))
-               .thenReturn(user);
-        WsAndHttpBasicAuthHandler handler =
-                new WsAndHttpBasicAuthHandler(authenticator, new Settings());
-        EmbeddedChannel channel = new EmbeddedChannel();
-        channel.pipeline().addLast("authenticator", handler);
-
-        DefaultFullHttpRequest request =
-                new DefaultFullHttpRequest(HTTP_1_1, POST, "/gremlin");
-        request.headers().set(AUTHORIZATION, "Bearer server-token");
-        channel.writeInbound(request);
-
-        ArgumentCaptor<Map<String, String>> credentials =
-                ArgumentCaptor.forClass(Map.class);
-        Mockito.verify(authenticator).authenticate(credentials.capture());
-        Mockito.verifyNoMoreInteractions(authenticator);
-        Assert.assertEquals("server-token",
-                            credentials.getValue().get(
-                                    HugeAuthenticator.KEY_TOKEN));
-        Assert.assertFalse(
-                credentials.getValue().containsKey("username"));
-        Assert.assertFalse(
-                credentials.getValue().containsKey("password"));
-        Assert.assertSame(user,
-                          channel.attr(StateKey.AUTHENTICATED_USER).get());
-        channel.finishAndReleaseAll();
-    }
-
-    @SuppressWarnings("unchecked")
-    @Test
     public void testBasicCredentialsStillAuthenticateHttpGremlinRequest()
             throws Exception {
         Authenticator authenticator = Mockito.mock(Authenticator.class);
@@ -98,6 +64,26 @@ public class WsAndHttpBasicAuthHandlerTest {
                 HugeAuthenticator.KEY_TOKEN));
         Assert.assertSame(user,
                           channel.attr(StateKey.AUTHENTICATED_USER).get());
+        channel.finishAndReleaseAll();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testAuthorizationSchemeIsCaseInsensitive() throws Exception {
+        Authenticator authenticator = Mockito.mock(Authenticator.class);
+        Mockito.when(authenticator.authenticate(Mockito.anyMap()))
+               .thenReturn(new AuthenticatedUser("admin"));
+        EmbeddedChannel channel = channel(authenticator);
+
+        String encoded = Base64.getEncoder().encodeToString(
+                "admin:password".getBytes(StandardCharsets.UTF_8));
+        channel.writeInbound(request("basic " + encoded));
+
+        ArgumentCaptor<Map<String, String>> credentials =
+                ArgumentCaptor.forClass(Map.class);
+        Mockito.verify(authenticator).authenticate(credentials.capture());
+        Assert.assertEquals("admin", credentials.getValue().get("username"));
+        Assert.assertEquals("password", credentials.getValue().get("password"));
         channel.finishAndReleaseAll();
     }
 
@@ -147,8 +133,8 @@ public class WsAndHttpBasicAuthHandlerTest {
     }
 
     @Test
-    public void testEmptyBearerTokenIsRejected() throws Exception {
-        assertUnauthorized("Bearer ");
+    public void testBearerTokenIsRejected() throws Exception {
+        assertUnauthorized("Bearer server-token");
     }
 
     @Test

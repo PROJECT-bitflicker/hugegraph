@@ -29,6 +29,10 @@ import org.apache.hugegraph.backend.id.Id;
 
 public interface AuthManager {
 
+    default boolean supportsGraphSpaceAuth() {
+        return false;
+    }
+
     void init();
 
     boolean close();

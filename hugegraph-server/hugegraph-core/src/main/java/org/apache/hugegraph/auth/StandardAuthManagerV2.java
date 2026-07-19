@@ -58,6 +58,11 @@ import io.jsonwebtoken.Claims;
 //only use in pd mode
 public class StandardAuthManagerV2 implements AuthManager {
 
+    @Override
+    public boolean supportsGraphSpaceAuth() {
+        return true;
+    }
+
     public static final String ALL_GRAPHS = "*";
     public static final String ALL_GRAPH_SPACES = "*";
     public static final String DEFAULT_SETTER_ROLE_KEY =
